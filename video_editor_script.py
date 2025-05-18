@@ -76,20 +76,24 @@ def determine_scaling_filter(video_path, target_aspect):
     # For vertical videos (Instagram Reels, TikTok)
     if target_ratio < 1:  # Target is portrait/vertical
         if video_aspect > 1:  # Input is landscape
-            # Center crop the landscape video to vertical
-            return (f"scale={target_width}:-1,crop={target_width}:{target_height}:(iw-{target_width})/2:0")
+            # Scale to match target height first, then crop width
+            new_width = int(target_height * video_aspect)
+            return f"scale={new_width}:{target_height},crop={target_width}:{target_height}:({new_width}-{target_width})/2:0"
         else:  # Input is already portrait/vertical or square
-            # Scale to fit target width, and either crop height if too tall or pad if too short
-            return (f"scale={target_width}:-1,crop={target_width}:{target_height}:0:(ih-{target_height})/2")
+            # Scale to match target width, then crop height
+            new_height = int(target_width / video_aspect)
+            return f"scale={target_width}:{new_height},crop={target_width}:{target_height}:0:({new_height}-{target_height})/2"
     
     # For square videos (Instagram Square)
     else:  # Target is square (1:1)
         if video_aspect > 1:  # Input is landscape
-            return (f"scale=-1:{target_height},crop={target_height}:{target_height}:(iw-{target_height})/2:0")
+            # Scale to match target height, then crop width
+            new_width = int(target_height * video_aspect)
+            return f"scale={new_width}:{target_height},crop={target_height}:{target_height}:({new_width}-{target_height})/2:0"
         else:  # Input is portrait/vertical
-            return (f"scale={target_width}:-1,crop={target_width}:{target_width}:0:(ih-{target_width})/2")
-
-
+            # Scale to match target width, then crop height
+            new_height = int(target_width / video_aspect)
+            return f"scale={target_width}:{new_height},crop={target_width}:{target_width}:0:({new_height}-{target_width})/2"
 def validate_inputs(video_paths):
     """Validate that the input videos meet the requirements."""
     categorized_videos = {}
@@ -173,6 +177,7 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
     
     # Create temporary directory for segment files
     with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"Using temporary directory: {temp_dir}")
         segment_files = []
         
         # Extract segments to temporary files
@@ -194,46 +199,156 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
                 '-c:a', 'aac',
                 segment_file
             ]
-            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            segment_files.append(segment_file)
+            print(f"Creating segment {i+1}/{len(segments_to_use)}: {segment_file}")
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            
+            # Check if segment creation was successful
+            if result.returncode != 0:
+                print(f"Error creating segment from {video_path}:")
+                print(result.stderr)
+                # Continue with other segments rather than failing completely
+                continue
+                
+            if os.path.exists(segment_file) and os.path.getsize(segment_file) > 0:
+                segment_files.append(segment_file)
+            else:
+                print(f"Warning: Segment file not created or empty: {segment_file}")
+                
+        if not segment_files:
+            raise Exception("No valid segments were created. Cannot create montage.")
         
-        # Create a file with list of segments for FFmpeg concat
-        concat_file = os.path.join(temp_dir, "concat_list.txt")
-        with open(concat_file, 'w') as f:
-            for segment_file in segment_files:
-                f.write(f"file '{segment_file}'\n")
+        try:
+            # Try the concat method first
+            temp_output = create_concat_file(segment_files, temp_dir)
+            if temp_output:
+                # Add text overlay "@Suite.E.Studios"
+                create_final_output(temp_output, output_path, output_duration, target_aspect)
+            else:
+                # If concat fails, fall back to direct encoding
+                fallback_create_output(segment_files, output_path, output_duration, target_aspect)
+        except Exception as e:
+            print(f"Error during montage creation: {e}")
+            print("Trying direct encoding fallback method...")
+            fallback_create_output(segment_files, output_path, output_duration, target_aspect)
+
+def create_concat_file(segment_files, temp_dir):
+    """Create a concatenated video file from segment files."""
+    # Create a file with list of segments for FFmpeg concat
+    concat_file = os.path.join(temp_dir, "concat_list.txt")
+    with open(concat_file, 'w') as f:
+        for segment_file in segment_files:
+            f.write(f"file '{segment_file}'\n")
+    
+    # Concatenate all segments
+    temp_output = os.path.join(temp_dir, "temp_output.mp4")
+    cmd = [
+        'ffmpeg',
+        '-y',
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', concat_file,
+        '-c', 'copy',
+        temp_output
+    ]
+    print(f"Creating intermediate file: {temp_output}")
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    
+    # Check if the command was successful
+    if result.returncode != 0:
+        print("FFmpeg Error during concat:")
+        print(result.stderr)
+        return None
         
-        # Concatenate all segments
-        temp_output = os.path.join(temp_dir, "temp_output.mp4")
-        cmd = [
-            'ffmpeg',
-            '-y',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', concat_file,
-            '-c', 'copy',
-            temp_output
-        ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # Verify the temp file was created
+    if not os.path.exists(temp_output) or os.path.getsize(temp_output) == 0:
+        print("Temp directory contents:")
+        for file in os.listdir(temp_dir):
+            print(f"  - {file}")
+        print("Concat file contents:")
+        with open(concat_file, 'r') as f:
+            print(f.read())
+        return None
+    
+    return temp_output
+
+def create_final_output(temp_output, output_path, video_duration, target_aspect):
+    """Create the final output with text overlay."""
+    # Add text overlay "@Suite.E.Studios"
+    # We'll add the text for short durations at different intervals
+    text_filter = create_text_overlay_filter(video_duration)
+    
+    # Set target dimensions
+    target_width = ASPECT_RATIOS[target_aspect]["width"]
+    target_height = ASPECT_RATIOS[target_aspect]["height"]
+    
+    # Final FFmpeg command to create the output with text overlay
+    cmd = [
+        'ffmpeg',
+        '-y',
+        '-i', temp_output,
+        '-vf', text_filter,
+        '-c:a', 'copy',
+        '-s', f"{target_width}x{target_height}",
+        output_path
+    ]
+    print(f"Executing final FFmpeg command to create: {output_path}")
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    
+    # Check if the command was successful
+    if result.returncode != 0:
+        print("FFmpeg Error:")
+        print(result.stderr)
+        raise Exception(f"FFmpeg failed with return code {result.returncode}")
         
-        # Add text overlay "@Suite.E.Studios"
-        # We'll add the text for short durations at different intervals
-        text_filter = create_text_overlay_filter(output_duration)
-        
-        # Set target dimensions
-        target_width = ASPECT_RATIOS[target_aspect]["width"]
-        target_height = ASPECT_RATIOS[target_aspect]["height"]
-        
-        cmd = [
-            'ffmpeg',
-            '-y',
-            '-i', temp_output,
-            '-vf', text_filter,
-            '-c:a', 'copy',
-            '-s', f"{target_width}x{target_height}",
-            output_path
-        ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # Verify the file was created
+    if not os.path.exists(output_path):
+        raise Exception(f"FFmpeg didn't report an error, but the output file wasn't created at: {output_path}")
+
+def fallback_create_output(segment_files, output_path, video_duration, target_aspect):
+    """Fallback method: Create output video by directly encoding all segments into one file."""
+    print("Using fallback method to create video...")
+    
+    # Set target dimensions
+    target_width = ASPECT_RATIOS[target_aspect]["width"]
+    target_height = ASPECT_RATIOS[target_aspect]["height"]
+    
+    # Generate a complex filtergraph to chain all segments together
+    filter_complex = []
+    inputs = []
+    
+    for i, segment_file in enumerate(segment_files):
+        inputs.extend(['-i', segment_file])
+        filter_complex.append(f"[{i}:v]scale={target_width}:{target_height}[v{i}]")
+    
+    # Concatenate all video streams
+    vid_concat = ';'.join(filter_complex) + ";" + ''.join([f"[v{i}]" for i in range(len(segment_files))]) + f"concat=n={len(segment_files)}:v=1:a=0[outv]"
+    
+    # Add text overlay
+    text_filter = create_text_overlay_filter(video_duration)
+    vid_concat += f";[outv]{text_filter}[out]"
+    
+    # Build the full command
+    cmd = ['ffmpeg', '-y']
+    cmd.extend(inputs)
+    cmd.extend([
+        '-filter_complex', vid_concat,
+        '-map', '[out]',
+        '-c:v', 'libx264',
+        '-preset', 'medium',
+        '-t', str(video_duration),
+        output_path
+    ])
+    
+    print("Executing fallback FFmpeg command...")
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    
+    if result.returncode != 0:
+        print("FFmpeg Error in fallback method:")
+        print(result.stderr)
+        raise Exception("Both regular and fallback methods failed to create output video")
+    
+    if not os.path.exists(output_path):
+        raise Exception("Fallback method didn't create output file")
 
 def create_text_overlay_filter(video_duration):
     """Create FFmpeg filter complex string for text overlays."""
@@ -334,11 +449,21 @@ def main():
     for video_list in categorized_videos.values():
         all_videos.extend(video_list)
     
+    print(f"Current working directory: {os.path.abspath(os.getcwd())}")
     print(f"Creating a {args.duration}-second {ASPECT_RATIOS[video_format]['description']} montage from {len(all_videos)} video(s)...")
     
     try:
         create_video_montage(all_videos, args.duration, output_path, video_format)
-        print(f"Success! Video montage saved to: {output_path}")
+        abs_output_path = os.path.abspath(output_path)
+        
+        # Check if the file was actually created
+        if os.path.exists(abs_output_path):
+            file_size = os.path.getsize(abs_output_path) / (1024 * 1024)  # Size in MB
+            print(f"Success! Video montage saved to: {abs_output_path}")
+            print(f"File size: {file_size:.2f} MB")
+        else:
+            print(f"Warning: File was not found at: {abs_output_path}")
+            print("The operation may have failed or saved to a different location.")
     except Exception as e:
         print(f"Error creating video montage: {e}")
         sys.exit(1)
