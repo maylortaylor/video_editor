@@ -13,5 +13,5 @@ python video_editor_script_v1.py --output summer_montage.mp4 --format instagram_
 ### "New Method"
 ```
 \\ example command to run script with "new method"
-python updated_video_editor_script.py --input-string "summer_montage, instagram_reel, video1.mp4, video2.mp4, video3.mp4" --duration 30
+python video_editor_script.py --input-string "summer_montage, instagram_reel, O:\_Captures\Ajeva 7.27.2024\GP013015.MP4" --duration 30
 ```
