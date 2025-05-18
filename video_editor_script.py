@@ -33,7 +33,7 @@ def get_video_duration(video_path):
         '-of', 'default=noprint_wrappers=1:nokey=1', 
         video_path
     ]
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     return float(result.stdout.strip())
 
 def get_video_dimensions(video_path):
@@ -46,7 +46,7 @@ def get_video_dimensions(video_path):
         '-of', 'csv=s=x:p=0', 
         video_path
     ]
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     dimensions = result.stdout.strip().split('x')
     return int(dimensions[0]), int(dimensions[1])
 
@@ -250,34 +250,84 @@ def create_text_overlay_filter(video_duration):
     
     return ','.join(filter_parts)
 
+def parse_input_string(input_string):
+    """Parse input string to extract video name, format, and input videos."""
+    parts = input_string.strip().split(',')
+    if len(parts) < 3:
+        print("Error: Input string must contain at least: output name, format, and one input video")
+        return None, None, None
+    
+    output_name = parts[0].strip()
+    
+    # Validate format
+    format_name = parts[1].strip().lower()
+    if format_name not in ASPECT_RATIOS:
+        print(f"Error: Format '{format_name}' not supported. Choose from: {', '.join(ASPECT_RATIOS.keys())}")
+        return output_name, None, None
+    
+    # Get input videos
+    input_videos = [video.strip() for video in parts[2:]]
+    
+    return output_name, format_name, input_videos
+
 def main():
     parser = argparse.ArgumentParser(description='Create an exciting video montage from input videos for social media.')
-    parser.add_argument('videos', nargs='+', help='Input video files')
-    parser.add_argument('--output', '-o', required=True, help='Output video file')
+    parser.add_argument('--input-string', '-i', help='Input string in format: "output_name, format, video1, video2, ..."')
+    parser.add_argument('videos', nargs='*', help='Input video files (if not using --input-string)')
+    parser.add_argument('--output', '-o', help='Output video file (if not using --input-string)')
     parser.add_argument('--duration', '-d', type=int, choices=[30, 60, 90], default=60,
                        help='Output video duration in seconds (30, 60, or 90)')
     parser.add_argument('--format', '-f', choices=['instagram_reel', 'tiktok', 'instagram_square'], 
-                       default='instagram_reel', help='Output video format/aspect ratio')
+                       help='Output video format/aspect ratio (if not using --input-string)')
     
     args = parser.parse_args()
     
     if not check_ffmpeg():
         sys.exit(1)
     
-    categorized_videos = validate_inputs(args.videos)
+    # Determine if we're using the string input mode or traditional args
+    if args.input_string:
+        output_name, format_name, input_videos = parse_input_string(args.input_string)
+        if not output_name or not format_name or not input_videos:
+            sys.exit(1)
+        
+        # Ensure output name has .mp4 extension
+        if not output_name.endswith('.mp4'):
+            output_name += '.mp4'
+            
+        output_path = output_name
+        video_format = format_name
+        videos = input_videos
+    else:
+        # Traditional argument mode
+        if not args.output:
+            print("Error: --output is required when not using --input-string")
+            sys.exit(1)
+        if not args.format:
+            print("Error: --format is required when not using --input-string")
+            sys.exit(1)
+        if not args.videos:
+            print("Error: At least one input video is required")
+            sys.exit(1)
+            
+        output_path = args.output
+        video_format = args.format
+        videos = args.videos
+    
+    categorized_videos = validate_inputs(videos)
     if not categorized_videos:
         sys.exit(1)
     
     # Flatten the list of videos
     all_videos = []
-    for videos in categorized_videos.values():
-        all_videos.extend(videos)
+    for video_list in categorized_videos.values():
+        all_videos.extend(video_list)
     
-    print(f"Creating a {args.duration}-second {ASPECT_RATIOS[args.format]['description']} montage from {len(all_videos)} video(s)...")
+    print(f"Creating a {args.duration}-second {ASPECT_RATIOS[video_format]['description']} montage from {len(all_videos)} video(s)...")
     
     try:
-        create_video_montage(all_videos, args.duration, args.output, args.format)
-        print(f"Success! Video montage saved to: {args.output}")
+        create_video_montage(all_videos, args.duration, output_path, video_format)
+        print(f"Success! Video montage saved to: {output_path}")
     except Exception as e:
         print(f"Error creating video montage: {e}")
         sys.exit(1)
