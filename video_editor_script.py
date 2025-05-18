@@ -58,7 +58,9 @@ def categorize_video(video_path):
         return "short"
     elif 60 < duration <= 300:  # 1-5 minutes
         return "medium"
-    elif 1800 <= duration <= 3600:  # 30 minutes to 1 hour
+    elif 300 < duration <= 1800:  # 5-30 minutes
+        return "medium_long"
+    elif 1800 < duration <= 3600:  # 30 minutes to 1 hour
         return "long"
     else:
         return "invalid"
@@ -98,9 +100,17 @@ def validate_inputs(video_paths):
             return None
             
         category = categorize_video(path)
-        if category not in categorized_videos:
-            categorized_videos[category] = []
-        categorized_videos[category].append(path)
+        
+        # Accept all non-invalid categories
+        if category != "invalid":
+            if category not in categorized_videos:
+                categorized_videos[category] = []
+            categorized_videos[category].append(path)
+        else:
+            # Only reject truly invalid videos (outside all ranges)
+            if "invalid" not in categorized_videos:
+                categorized_videos["invalid"] = []
+            categorized_videos["invalid"].append(path)
     
     # Check if we have enough short videos if that's what was provided
     if "short" in categorized_videos and len(categorized_videos["short"]) < 3 and len(categorized_videos) == 1:
@@ -113,6 +123,7 @@ def validate_inputs(video_paths):
         for path in categorized_videos["invalid"]:
             duration = get_video_duration(path)
             print(f"  - {path}: {duration:.2f} seconds")
+            print(f"  Acceptable ranges: 30-3600 seconds (excluding 0-30 seconds)")
         return None
         
     return categorized_videos
