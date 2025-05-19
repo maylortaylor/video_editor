@@ -93,8 +93,31 @@ def determine_scaling_filter(video_path, target_aspect):
     target_width = ASPECT_RATIOS[target_aspect]["width"]
     target_height = ASPECT_RATIOS[target_aspect]["height"]
     
-    # Simple direct scaling with padding
-    return f"scale={target_width}:{target_height}:force_original_aspect_ratio=1,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
+    # Get input video dimensions
+    input_width, input_height = get_video_dimensions(video_path)
+    
+    # Calculate scaling factors
+    width_scale = target_width / input_width
+    height_scale = target_height / input_height
+    
+    # Use the larger scale to ensure we fill the frame
+    scale_factor = max(width_scale, height_scale)
+    
+    # Calculate new dimensions after scaling
+    new_width = int(input_width * scale_factor)
+    new_height = int(input_height * scale_factor)
+    
+    # Calculate padding
+    pad_x = max(0, (new_width - target_width) // 2)
+    pad_y = max(0, (new_height - target_height) // 2)
+    
+    # Create filter string that scales first, then crops to target size
+    filter_string = (
+        f"scale={new_width}:{new_height}:force_original_aspect_ratio=1,"
+        f"crop={target_width}:{target_height}:{pad_x}:{pad_y}"
+    )
+    
+    return filter_string
 
 def generate_easing_expression(easing_type, t_str):
     """Generate easing expressions for smooth panning effects"""
@@ -346,48 +369,80 @@ def generate_and_test_filters():
         print(f"Filter: {result['filter_string']}")
     return [r for r in test_results if r['success']]
 
-def create_reliable_filter(video_path, target_aspect, direction, duration):
+def create_reliable_filter(video_path, target_aspect, direction, duration, easing_type=EasingType.EASE_IN_OUT):
     """
     Create a reliable filter string that works with all FFmpeg versions
     using the simplest possible expressions.
     """
-    # Get target dimensions from aspect ratio
+    # Get target dimensions
     target_width = ASPECT_RATIOS[target_aspect]["width"]
     target_height = ASPECT_RATIOS[target_aspect]["height"]
-
-    # For short segments or if panning is disabled, use simple scaling
+    
+    # Get input video dimensions
+    input_width, input_height = get_video_dimensions(video_path)
+    
+    # For short segments or if panning is disabled, use simple scaling and cropping
     if duration < 2.0:
-        return f"scale={target_width}:{target_height}:force_original_aspect_ratio=1,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
+        # Calculate scaling factors
+        width_scale = target_width / input_width
+        height_scale = target_height / input_height
+        scale_factor = max(width_scale, height_scale)
+        
+        # Calculate new dimensions after scaling
+        new_width = int(input_width * scale_factor)
+        new_height = int(input_height * scale_factor)
+        
+        # Calculate crop offsets
+        crop_x = max(0, (new_width - target_width) // 2)
+        crop_y = max(0, (new_height - target_height) // 2)
+        
+        return (
+            f"scale={new_width}:{new_height}:force_original_aspect_ratio=1,"
+            f"crop={target_width}:{target_height}:{crop_x}:{crop_y}"
+        )
 
     # Base components for filter strings
     fps_str = 'fps=30'
     duration_frames = int(duration * 30)
     duration_str = f'd={duration_frames}'
-    frames = duration_frames  # Add this line to define frames
+    frames = duration_frames
 
-    # For vertical portrait format, handle scaling differently
-    if target_aspect == "vertical_portrait":
-        # Scale to match height first, then pad to width
-        base_filter = f"scale=-1:{target_height}:force_original_aspect_ratio=1"
-        base_filter += f",pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
-    else:
-        # For other formats, scale to width first, then pad to height
-        base_filter = f"scale={target_width}:-1:force_original_aspect_ratio=1"
-        base_filter += f",pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
+    # Calculate scaling factors for panning
+    width_scale = target_width / input_width
+    height_scale = target_height / input_height
+    scale_factor = max(width_scale, height_scale)
+    
+    # Calculate new dimensions after scaling
+    new_width = int(input_width * scale_factor)
+    new_height = int(input_height * scale_factor)
+    
+    # Calculate crop offsets
+    crop_x = max(0, (new_width - target_width) // 2)
+    crop_y = max(0, (new_height - target_height) // 2)
 
-    # Add panning effect with simpler expressions
+    # Base filter for scaling and cropping
+    base_filter = (
+        f"scale={new_width}:{new_height}:force_original_aspect_ratio=1,"
+        f"crop={target_width}:{target_height}:{crop_x}:{crop_y}"
+    )
+
+    # Generate easing expression
+    t_str = f"n/{frames}"
+    easing_expr = generate_easing_expression(easing_type, t_str)
+
+    # Add panning effect with easing expressions
     if direction == PanDirection.LEFT_TO_RIGHT:
-        filter_string = f"{base_filter},select=1,zoompan=x=\'iw*0.1*(n/{frames})\':y=0:z=1:{fps_str}:{duration_str}"
+        filter_string = f"{base_filter},select=1,zoompan=x='iw*0.1*({easing_expr})':y=0:z=1:{fps_str}:{duration_str}"
     elif direction == PanDirection.RIGHT_TO_LEFT:
-        filter_string = f"{base_filter},select=1,zoompan=x=\'iw*0.1*(1-n/{frames})\':y=0:z=1:{fps_str}:{duration_str}"
+        filter_string = f"{base_filter},select=1,zoompan=x='iw*0.1*(1-{easing_expr})':y=0:z=1:{fps_str}:{duration_str}"
     elif direction == PanDirection.TOP_TO_BOTTOM:
-        filter_string = f"{base_filter},select=1,zoompan=x=0:y=\'ih*0.1*(n/{frames})\':z=1:{fps_str}:{duration_str}"
+        filter_string = f"{base_filter},select=1,zoompan=x=0:y='ih*0.1*({easing_expr})':z=1:{fps_str}:{duration_str}"
     elif direction == PanDirection.BOTTOM_TO_TOP:
-        filter_string = f"{base_filter},select=1,zoompan=x=0:y=\'ih*0.1*(1-n/{frames})\':z=1:{fps_str}:{duration_str}"
+        filter_string = f"{base_filter},select=1,zoompan=x=0:y='ih*0.1*(1-{easing_expr})':z=1:{fps_str}:{duration_str}"
     elif direction == PanDirection.ZOOM_IN:
-        filter_string = f"{base_filter},select=1,zoompan=x=\'iw/4\':y=\'ih/4\':z=\'1+0.1*(n/{frames})\':{fps_str}:{duration_str}"
+        filter_string = f"{base_filter},select=1,zoompan=x='iw/4':y='ih/4':z='1+0.1*({easing_expr})':{fps_str}:{duration_str}"
     elif direction == PanDirection.ZOOM_OUT:
-        filter_string = f"{base_filter},select=1,zoompan=x=0:y=0:z=\'1+0.1-0.1*(n/{frames})\':{fps_str}:{duration_str}"
+        filter_string = f"{base_filter},select=1,zoompan=x=0:y=0:z='1+0.1-0.1*({easing_expr})':{fps_str}:{duration_str}"
     else:
         filter_string = base_filter
 
@@ -498,8 +553,11 @@ def create_text_overlay_filter(video_duration, text=None, display_duration=5, st
     end_time = min(full_opacity_end + fade_duration, video_duration)
     
     # Properly escape the text for FFmpeg
-    escaped_text = text.replace("'", "'\\\\''")
-    escaped_text = escaped_text.encode('unicode-escape').decode()
+    # First replace single quotes with escaped single quotes
+    escaped_text = text.replace("'", "\\'")
+    # Then escape any other special characters
+    escaped_text = escaped_text.replace(":", "\\:")
+    escaped_text = escaped_text.replace("\\", "\\\\")
     
     # For pulsing effect, adjust the size variation
     if style == "pulse":
@@ -518,7 +576,7 @@ def create_text_overlay_filter(video_duration, text=None, display_duration=5, st
             f"text='{escaped_text}':"
             f"fontsize={size_expr}:"
             f"fontcolor=white:"
-            f"fontfile=Arial:"
+            f"fontfile=/System/Library/Fonts/Helvetica.ttc:"  # Use system font
             f"borderw=3:"
             f"bordercolor=black:"
             f"x='{x_pos}':"
@@ -533,7 +591,7 @@ def create_text_overlay_filter(video_duration, text=None, display_duration=5, st
             f"text='{escaped_text}':"
             f"fontsize={size_expr}:"
             f"fontcolor=white:"
-            f"fontfile=Arial:"
+            f"fontfile=/System/Library/Fonts/Helvetica.ttc:"  # Use system font
             f"borderw=3:"
             f"bordercolor=black:"
             f"x=if(gte(tw\\,{target_width-2*h_margin})\\,{h_margin}\\,max({h_margin}\\,(w-tw)/2)):"
@@ -836,29 +894,137 @@ def create_video_segment(video_path, start_time, segment_duration, output_file, 
         target_width = ASPECT_RATIOS[target_aspect]["width"]
         target_height = ASPECT_RATIOS[target_aspect]["height"]
         
-        # Create the filter string - first scale to cover the frame, then crop to exact dimensions
-        filter_string = f'scale={target_width}:{target_height}:force_original_aspect_ratio=increase,crop={target_width}:{target_height}:(in_w-{target_width})/2:(in_h-{target_height})/2'
+        # Get input video dimensions
+        input_width, input_height = get_video_dimensions(video_path)
         
-        # Create FFmpeg command
-        cmd = [
-            'ffmpeg', '-y',
+        # Calculate scaling factors
+        width_scale = target_width / input_width
+        height_scale = target_height / input_height
+        scale_factor = max(width_scale, height_scale)
+        
+        # Calculate new dimensions after scaling
+        new_width = int(input_width * scale_factor)
+        new_height = int(input_height * scale_factor)
+        
+        # Calculate crop offsets
+        crop_x = max(0, (new_width - target_width) // 2)
+        crop_y = max(0, (new_height - target_height) // 2)
+        
+        # Base filter for scaling and cropping
+        base_filter = (
+            f"scale={new_width}:{new_height}:force_original_aspect_ratio=1,"
+            f"crop={target_width}:{target_height}:{crop_x}:{crop_y}"
+        )
+        
+        # Add panning if needed
+        if direction and segment_duration >= 2.0:
+            # Calculate pan distance (10% of frame size)
+            pan_distance = 0.1
+            
+            # Create panning filter based on direction
+            if direction == PanDirection.LEFT_TO_RIGHT:
+                pan_filter = f"crop=w={target_width}:h={target_height}:x='{crop_x}+({new_width-target_width})*{pan_distance}*t/{segment_duration}':y={crop_y}"
+            elif direction == PanDirection.RIGHT_TO_LEFT:
+                pan_filter = f"crop=w={target_width}:h={target_height}:x='{crop_x}+({new_width-target_width})*{pan_distance}*(1-t/{segment_duration})':y={crop_y}"
+            elif direction == PanDirection.TOP_TO_BOTTOM:
+                pan_filter = f"crop=w={target_width}:h={target_height}:x={crop_x}:y='{crop_y}+({new_height-target_height})*{pan_distance}*t/{segment_duration}'"
+            elif direction == PanDirection.BOTTOM_TO_TOP:
+                pan_filter = f"crop=w={target_width}:h={target_height}:x={crop_x}:y='{crop_y}+({new_height-target_height})*{pan_distance}*(1-t/{segment_duration})'"
+            elif direction == PanDirection.ZOOM_IN:
+                # For zoom in, we'll use a simple scale filter
+                pan_filter = f"scale='{target_width}*(1+{pan_distance}*t/{segment_duration})':'{target_height}*(1+{pan_distance}*t/{segment_duration})'"
+            elif direction == PanDirection.ZOOM_OUT:
+                # For zoom out, we'll use a simple scale filter
+                pan_filter = f"scale='{target_width}*(1+{pan_distance}-{pan_distance}*t/{segment_duration})':'{target_height}*(1+{pan_distance}-{pan_distance}*t/{segment_duration})'"
+            else:
+                pan_filter = ""
+            
+            # Combine filters
+            if pan_filter:
+                filter_string = f"{base_filter},{pan_filter}"
+            else:
+                filter_string = base_filter
+        else:
+            filter_string = base_filter
+        
+        # Create FFmpeg command with hardware acceleration if available
+        hw_encoder, _, thread_count = detect_hardware_encoders()
+        
+        cmd = ['ffmpeg', '-y']
+        
+        # Add hardware acceleration if available
+        if hw_encoder:
+            if hw_encoder == 'h264_videotoolbox':
+                cmd.extend([
+                    '-threads', str(thread_count),
+                    '-filter_threads', str(thread_count),
+                    '-filter_complex_threads', str(thread_count)
+                ])
+            elif hw_encoder == 'h264_nvenc':
+                cmd.extend([
+                    '-threads', str(thread_count),
+                    '-extra_hw_frames', '3',
+                    '-gpu_init_delay', '0.1'
+                ])
+        
+        # Add input parameters
+        cmd.extend([
             '-ss', str(start_time),
             '-i', video_path,
-            '-t', str(segment_duration),
-            '-vf', filter_string,
-            '-c:v', 'libx264',
-            '-preset', 'medium',
-            '-crf', '23',
+            '-t', str(segment_duration)
+        ])
+        
+        # Add video filter
+        cmd.extend(['-vf', filter_string])
+        
+        # Add codec settings
+        if hw_encoder:
+            cmd.extend(['-c:v', hw_encoder])
+            if hw_encoder == 'h264_nvenc':
+                cmd.extend([
+                    '-preset', 'p4',
+                    '-rc', 'vbr',
+                    '-cq', '20',
+                    '-b:v', '10M',
+                    '-maxrate', '15M',
+                    '-bufsize', '15M',
+                    '-spatial-aq', '1',
+                    '-temporal-aq', '1'
+                ])
+            elif hw_encoder == 'h264_videotoolbox':
+                cmd.extend([
+                    '-b:v', '10M',
+                    '-maxrate', '15M',
+                    '-bufsize', '15M',
+                    '-tag:v', 'avc1',
+                    '-movflags', '+faststart'
+                ])
+        else:
+            cmd.extend([
+                '-c:v', 'libx264',
+                '-preset', 'medium',
+                '-crf', '23'
+            ])
+        
+        # Add audio settings
+        cmd.extend([
             '-c:a', 'aac',
             '-b:a', '192k',
             output_file
-        ]
+        ])
         
-        # Execute command
+        # Execute command with detailed error logging
+        print(f"\nCreating segment with command: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
-            print(f"Warning: Failed to create segment: {result.stderr}")
+            print(f"FFmpeg Error Output:")
+            print(result.stderr)
+            return None
+            
+        # Verify the output file exists and has content
+        if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+            print(f"Error: Output file was not created or is empty: {output_file}")
             return None
             
         return output_file
@@ -960,19 +1126,32 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
         for i, (video_path, start_time, duration) in enumerate(selected_segments):
             segment_file = os.path.join(temp_dir, f"segment_{i:03d}.mp4")
             
-            # Create segment using the simplified approach
+            # Determine panning direction for this segment
+            current_direction = None
+            if enable_panning:
+                if pan_strategy == "random":
+                    current_direction = random.choice(list(PanDirection))
+                elif pan_strategy == "sequence":
+                    # Cycle through directions in sequence
+                    current_direction = list(PanDirection)[i % len(PanDirection)]
+                elif isinstance(pan_strategy, PanDirection):
+                    current_direction = pan_strategy
+            
+            # Create segment using the panning approach
             result = create_video_segment(
                 video_path=video_path,
                 start_time=start_time,
                 segment_duration=duration,
                 output_file=segment_file,
                 target_aspect=target_aspect,
-                direction=None  # We're not using panning for now
+                direction=current_direction
             )
             
             if result:
                 actual_duration = get_video_duration(segment_file)
                 print(f"Segment {i+1}/{len(selected_segments)} created successfully. Duration: {actual_duration:.2f}s")
+                if current_direction:
+                    print(f"Using panning direction: {current_direction.value}")
                 segment_files.append(segment_file)
             else:
                 print(f"Warning: Failed to create segment {i+1}")
