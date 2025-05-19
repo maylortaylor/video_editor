@@ -23,8 +23,6 @@ python3 video_editor_script.py \
      -f vertical_portrait \
      -d 30 \
      --text="@Suite.E.Studios" \
-     --text="#FinalFriday" \
-     --text="@StPeteMusic" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
 
@@ -42,33 +40,6 @@ python3 video_editor_script.py \
      --segments some \
      --text-style pulse \
      --text="@Suite.E.Studios" \
-     --text="#FinalFriday" \
-     "/Users/matttaylor/Documents/Maylor/test.MP4"
-
-python3 video_editor_script.py \
-     -o panning_montage.mp4 \
-     -f vertical_portrait \
-     -d 30 \
-     --segments few \
-     --text-style concert \
-     --text="@Suite.E.Studios" --text="#FinalFriday" --text="@StPeteMusic" \
-     --pan-speed 1.0 \
-     --pan-distance 0.2 \
-     --easing ease_in_out \
-     "/Users/matttaylor/Documents/Maylor/test.MP4"
-
-python3 video_editor_script.py \
-     -o panning_montage.mp4 \
-     -f vertical_portrait \
-     -d 30 \
-     --segments few \
-     --text-style concert \
-     --text="@Suite.E.Studios" --text="#FinalFriday" --text="@StPeteMusic" \
-     --text-motion dvd_bounce \
-     --panning \
-     --pan-speed 0.5 \
-     --pan-distance 0.15 \
-     --easing ease_in_out \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
 
@@ -81,7 +52,6 @@ python3 video_editor_script.py \
      --intro-video "/Users/matttaylor/Documents/Maylor/test.MP4" \
      --intro-audio "/Users/matttaylor/Documents/Maylor/test.MP4" \
      --text-style promo \
-     --text="Professional Studio" \
      --text="@Suite.E.Studios" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
@@ -95,7 +65,6 @@ python3 video_editor_script.py \
      --segments lots \
      --panning \
      --text-style concert \
-     --text="@StPeteMusic" \
      --text="@Suite.E.Studios" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
@@ -108,7 +77,7 @@ python3 video_editor_script.py \
      -d 30 \
      --pan-strategy zoom_in \
      --text-style default \
-     --text="Behind the Scenes" \
+     --text="@Suite.E.Studios" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
 
@@ -121,8 +90,6 @@ python3 video_editor_script.py \
      --segments few \
      --text-style concert \
      --text="@Suite.E.Studios" \
-     --text="#FinalFriday" \
-     --text="@StPeteMusic" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
 
@@ -137,9 +104,7 @@ python3 video_editor_script.py \
      --intro-video "/Users/matttaylor/Documents/Maylor/test.MP4" \
      --intro-audio "/Users/matttaylor/Documents/Maylor/test.MP4" \
      --text-style promo \
-     --text="Professional Studio" \
-     --text="Book Your Session" \
-     --text="Limited Time Offer" \
+     --text="@Suite.E.Studios" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
 
@@ -193,7 +158,7 @@ python3 video_editor_script.py -o output.mp4 -f vertical_portrait "/Users/mattta
 | `--segments` | Number of segments: `few` (3-7), `some` (6-12), or `lots` (10-25) |
 | `--panning` | Enable panning effects |
 | `--pan-strategy` | Panning direction or strategy |
-| `--text` | Text overlay(s) to display (use `--text="text"` format) |
+| `--text` | Text overlay to display (single text string) |
 | `--text-style` | Text style: `default`, `pulse`, `concert`, or `promo` |
 | `--intro-video` | Video to play at the start |
 | `--intro-audio` | Audio file to play at the start |

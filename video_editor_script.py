@@ -88,8 +88,8 @@ def categorize_video(video_path):
         return "invalid"
 
 def determine_scaling_filter(video_path, target_aspect):
-    """Determine how to scale and pad/crop video to match target aspect ratio."""
-    width, height = get_video_dimensions(video_path)
+    """Determine how to scale and pad video to match target aspect ratio."""
+    # Get target dimensions
     target_width = ASPECT_RATIOS[target_aspect]["width"]
     target_height = ASPECT_RATIOS[target_aspect]["height"]
     
@@ -110,8 +110,8 @@ def generate_easing_expression(easing_type, t_str):
         return t_str
 
 def generate_ultra_simple_pan_filter(direction, duration, pan_speed=1.0, pan_distance=0.2, easing_type=EasingType.LINEAR):
-    scale_pad = f'scale=1080:1920:force_original_aspect_ratio=1,pad=1080:1920:(ow-iw)/2:(oh-ih)/2'
-    return scale_pad
+    """Generate a simple filter string for basic scaling and padding."""
+    return 'scale=1080:1920:force_original_aspect_ratio=1,pad=1080:1920:(ow-iw)/2:(oh-ih)/2'
 
 def validate_inputs(video_paths):
     """Validate that the input videos meet the requirements."""
@@ -363,6 +363,7 @@ def create_reliable_filter(video_path, target_aspect, direction, duration):
     fps_str = 'fps=30'
     duration_frames = int(duration * 30)
     duration_str = f'd={duration_frames}'
+    frames = duration_frames  # Add this line to define frames
 
     # For vertical portrait format, handle scaling differently
     if target_aspect == "vertical_portrait":
@@ -459,13 +460,12 @@ def calculate_text_layout(text, target_aspect, base_size, margin_percent=20, min
     line_spacing = min_font_size * 1.2
     return min_font_size, wrapped_lines[:3], line_spacing  # Limit to 3 lines maximum
 
-def create_text_overlay_filter(video_duration, text_array=None, display_duration=5, gap_duration=3, style="default", target_aspect="vertical_portrait", motion_type="none"):
+def create_text_overlay_filter(video_duration, text=None, display_duration=5, style="default", target_aspect="vertical_portrait", motion_type="none"):
     """
-    Create FFmpeg filter complex string for text overlays with enhanced effects.
-    Now includes margin handling, dynamic font sizing, and multi-line text support.
+    Create FFmpeg filter string for a single text overlay.
     """
-    if text_array is None:
-        text_array = ['@Suite.E.Studios']
+    if not text:
+        return ""
     
     fade_duration = 2  # Fixed 2-second fade in/out
     margin_percent = 20  # 20% total margins (10% each side)
@@ -477,117 +477,77 @@ def create_text_overlay_filter(video_duration, text_array=None, display_duration
     # Calculate margins
     h_margin = int(target_width * (margin_percent / 200))
     
-    # Style-specific base font sizes (reduced by 20%)
+    # Style-specific base font sizes
     if style == "pulse":
-        base_fontsize = 58  # was 72
-        y_pos_base = "h*0.85"
-        min_font_size = 29  # was 36
+        base_fontsize = 58
+        y_pos = "h*0.85"
     elif style == "concert":
-        base_fontsize = 77  # was 96
-        y_pos_base = "h*0.5"
-        min_font_size = 38  # was 48
+        base_fontsize = 77
+        y_pos = "h*0.5"
     elif style == "promo":
-        base_fontsize = 38  # was 48
-        y_pos_base = "h*0.9"
-        min_font_size = 29  # was 36
+        base_fontsize = 38
+        y_pos = "h*0.9"
     else:
-        base_fontsize = 58  # was 72
-        y_pos_base = "h*0.85"
-        min_font_size = 29  # was 36
+        base_fontsize = 58
+        y_pos = "h*0.85"
     
-    filter_parts = []
-    current_time = 0
+    # Calculate timing
+    start_time = 0
+    full_opacity_start = start_time + fade_duration
+    full_opacity_end = min(full_opacity_start + display_duration, video_duration)
+    end_time = min(full_opacity_end + fade_duration, video_duration)
     
-    for text in text_array:
-        # Skip if we've exceeded video duration
-        if current_time >= video_duration:
-            break
+    # Properly escape the text for FFmpeg
+    escaped_text = text.replace("'", "'\\\\''")
+    escaped_text = escaped_text.encode('unicode-escape').decode()
+    
+    # For pulsing effect, adjust the size variation
+    if style == "pulse":
+        size_variation = base_fontsize * 0.1  # 10% size variation
+        size_expr = f"{base_fontsize}+{size_variation}*sin(2*PI*t/1.5)"
+    else:
+        size_expr = str(base_fontsize)
+    
+    # Handle DVD bounce motion
+    if motion_type == TextMotionType.DVD_BOUNCE.value:
+        x_pos = f"mod(t*100,{target_width}-tw)"
+        y_pos = f"mod(t*50,{target_height}-th)"
         
-        # Calculate timing
-        start_time = current_time
-        full_opacity_start = start_time + fade_duration
-        full_opacity_end = min(full_opacity_start + display_duration, video_duration)
-        end_time = min(full_opacity_end + fade_duration, video_duration)
-        
-        # Calculate font size and wrap text
-        font_size, wrapped_lines, line_spacing = calculate_text_layout(
-            text, target_aspect, base_fontsize, margin_percent, min_font_size
+        filter_string = (
+            f"drawtext="
+            f"text='{escaped_text}':"
+            f"fontsize={size_expr}:"
+            f"fontcolor=white:"
+            f"fontfile=Arial:"
+            f"borderw=3:"
+            f"bordercolor=black:"
+            f"x='{x_pos}':"
+            f"y='{y_pos}':"
+            f"enable=between(t\\,{start_time}\\,{end_time}):"
+            f"alpha=if(lt(t\\,{full_opacity_start})\\,(t-{start_time})/{fade_duration}\\,"
+            f"if(gt(t\\,{full_opacity_end})\\,1-(t-{full_opacity_end})/{fade_duration}\\,1))"
         )
-        
-        # Calculate vertical position adjustment for multiple lines
-        total_height = len(wrapped_lines) * line_spacing
-        if style == "concert":
-            y_start = f"(h-{total_height})/2"  # Center all lines vertically
-        else:
-            # Adjust base position up by half the height of additional lines
-            y_start = f"{y_pos_base}-{(len(wrapped_lines)-1)*line_spacing}/2"
-        
-        # Create a filter for each line of text
-        for i, line in enumerate(wrapped_lines):
-            # Properly escape the text for FFmpeg
-            escaped_text = line.replace("'", "'\\\\''")  # Escape single quotes
-            escaped_text = escaped_text.encode('unicode-escape').decode()  # Handle emoji and special chars
-            
-            # Calculate y position for this line
-            y_pos = f"{y_start}+{i*line_spacing}"
-            
-            # For pulsing effect, adjust the size variation based on the calculated font size
-            if style == "pulse":
-                size_variation = font_size * 0.1  # 10% size variation
-                size_expr = f"{font_size}+{size_variation}*sin(2*PI*t/1.5)"
-            else:
-                size_expr = str(font_size)
-            
-            # Handle DVD bounce motion
-            if motion_type == TextMotionType.DVD_BOUNCE.value:
-                # Create simpler bounce expressions for x and y
-                x_pos = f"mod(t*100,{target_width}-tw)"
-                y_pos = f"mod(t*50,{target_height}-th)"
-                
-                # Build the filter string with bounce motion
-                filter_parts.append(
-                    f"drawtext="
-                    f"text='{escaped_text}':"
-                    f"fontsize={size_expr}:"
-                    f"fontcolor=white:"
-                    f"fontfile=Arial:"
-                    f"borderw=3:"
-                    f"bordercolor=black:"
-                    f"x='{x_pos}':"
-                    f"y='{y_pos}':"
-                    f"enable=between(t\\,{start_time}\\,{end_time}):"
-                    f"alpha=if(lt(t\\,{full_opacity_start})\\,(t-{start_time})/{fade_duration}\\,"
-                    f"if(gt(t\\,{full_opacity_end})\\,1-(t-{full_opacity_end})/{fade_duration}\\,1))"
-                )
-            else:
-                # Build the filter string with normal positioning
-                filter_parts.append(
-                    f"drawtext="
-                    f"text='{escaped_text}':"
-                    f"fontsize={size_expr}:"
-                    f"fontcolor=white:"
-                    f"fontfile=Arial:"
-                    f"borderw=3:"
-                    f"bordercolor=black:"
-                    f"x=if(gte(tw\\,{target_width-2*h_margin})\\,{h_margin}\\,max({h_margin}\\,(w-tw)/2)):"
-                    f"y={y_pos}:"
-                    f"enable=between(t\\,{start_time}\\,{end_time}):"
-                    f"alpha=if(lt(t\\,{full_opacity_start})\\,(t-{start_time})/{fade_duration}\\,"
-                    f"if(gt(t\\,{full_opacity_end})\\,1-(t-{full_opacity_end})/{fade_duration}\\,1))"
-                )
-            
-            # Add glow effect for concert style
-            if style == "concert":
-                filter_parts[-1] += ":shadowcolor=black@0.5:shadowx=2:shadowy=2"
-        
-        # Update time for next text
-        current_time = end_time + gap_duration
+    else:
+        filter_string = (
+            f"drawtext="
+            f"text='{escaped_text}':"
+            f"fontsize={size_expr}:"
+            f"fontcolor=white:"
+            f"fontfile=Arial:"
+            f"borderw=3:"
+            f"bordercolor=black:"
+            f"x=if(gte(tw\\,{target_width-2*h_margin})\\,{h_margin}\\,max({h_margin}\\,(w-tw)/2)):"
+            f"y={y_pos}:"
+            f"enable=between(t\\,{start_time}\\,{end_time}):"
+            f"alpha=if(lt(t\\,{full_opacity_start})\\,(t-{start_time})/{fade_duration}\\,"
+            f"if(gt(t\\,{full_opacity_end})\\,1-(t-{full_opacity_end})/{fade_duration}\\,1))"
+        )
     
-    # Join all filter parts with commas
-    if not filter_parts:
-        return ""
+    # Add glow effect for concert style
+    if style == "concert":
+        filter_string += ":shadowcolor=black@0.5:shadowx=2:shadowy=2"
     
-    return ','.join(filter_parts)
+    return filter_string
 
 def detect_hardware_encoders():
     """
@@ -805,22 +765,35 @@ def fallback_create_output(segment_files, output_path, video_duration, target_as
     for i, segment_file in enumerate(segment_files):
         inputs.extend(['-i', segment_file])
         filter_complex.append(f"[{i}:v]scale={target_width}:{target_height}[v{i}]")
+        filter_complex.append(f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{i}]")
     
-    # Concatenate all video streams
-    vid_concat = ';'.join(filter_complex) + ";" + ''.join([f"[v{i}]" for i in range(len(segment_files))]) + f"concat=n={len(segment_files)}:v=1:a=0[outv]"
+    # Concatenate all video and audio streams
+    vid_concat = ';'.join(filter_complex) + ";" + \
+                 ''.join([f"[v{i}]" for i in range(len(segment_files))]) + \
+                 f"concat=n={len(segment_files)}:v=1:a=0[outv];" + \
+                 ''.join([f"[a{i}]" for i in range(len(segment_files))]) + \
+                 f"concat=n={len(segment_files)}:v=0:a=1[outa]"
     
     # Add text overlay
     text_filter = create_text_overlay_filter(video_duration)
-    vid_concat += f";[outv]{text_filter}[out]"
+    if text_filter:
+        vid_concat += f";[outv]{text_filter}[finalv]"
+        video_output = "[finalv]"
+    else:
+        video_output = "[outv]"
     
     # Build the full command
     cmd = ['ffmpeg', '-y']
     cmd.extend(inputs)
     cmd.extend([
         '-filter_complex', vid_concat,
-        '-map', '[out]',
+        '-map', video_output,
+        '-map', '[outa]',
         '-c:v', 'libx264',
         '-preset', 'medium',
+        '-crf', '23',
+        '-c:a', 'aac',
+        '-b:a', '192k',
         '-t', str(video_duration),
         output_path
     ])
@@ -857,115 +830,48 @@ def parse_input_string(input_string):
     return output_name, format_name, input_videos
 
 def create_video_segment(video_path, start_time, segment_duration, output_file, target_aspect, direction):
-    """
-    Create a single video segment with reliable panning effect.
-    """
-    # Get target dimensions
-    target_width = ASPECT_RATIOS[target_aspect]["width"]
-    target_height = ASPECT_RATIOS[target_aspect]["height"]
-
-    # Get input video dimensions
-    input_width, input_height = get_video_dimensions(video_path)
-    print(f"Input video dimensions: {input_width}x{input_height}")
-    print(f"Target dimensions: {target_width}x{target_height}")
-
-    # Calculate frames for the segment
-    fps = 30
-    frames = int(segment_duration * fps)
-    fps_str = f'fps={fps}'
-    duration_str = f'd={frames}'
-
-    # For short segments, use simple scaling
-    if segment_duration < 2.0:
-        # Scale up by 20% to ensure we have enough room for padding
-        scale_width = int(target_width * 1.2)
-        scale_height = int(target_height * 1.2)
-        filter_string = f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=1,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
-    else:
-        # For vertical portrait format, handle scaling differently
-        if target_aspect == "vertical_portrait":
-            # Scale up by 20% to ensure we have enough room for padding
-            scale_height = int(target_height * 1.2)
-            base_filter = f"scale=-1:{scale_height}:force_original_aspect_ratio=1"
-            base_filter += f",pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
-        else:
-            # For other formats, scale up by 20% to ensure we have enough room for padding
-            scale_width = int(target_width * 1.2)
-            base_filter = f"scale={scale_width}:-1:force_original_aspect_ratio=1"
-            base_filter += f",pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
-
-        filter_string = base_filter
-
-    print(f"Using filter string: {filter_string}")
-
-    # Extract segment using FFmpeg with more conservative settings
-    cmd = [
-        'ffmpeg',
-        '-y',  # Overwrite output files
-        '-ss', str(start_time),
-        '-i', video_path,
-        '-t', str(segment_duration),
-        '-vf', filter_string,
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',  # Use veryfast preset for better compatibility
-        '-crf', '23',          # Good quality setting
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-movflags', '+faststart',  # Optimize for streaming
-        output_file
-    ]
-
-    print(f"Running FFmpeg command: {' '.join(cmd)}")
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-
-    if result.returncode != 0:
-        print(f"Error creating segment:")
-        print(result.stderr)
+    """Create a single video segment with the specified parameters."""
+    try:
+        # Get target dimensions
+        target_width = ASPECT_RATIOS[target_aspect]["width"]
+        target_height = ASPECT_RATIOS[target_aspect]["height"]
         
-        # Try fallback with even simpler filter
-        print("Trying fallback with simpler filter...")
-        # Scale up by 20% to ensure we have enough room for padding
-        scale_width = int(target_width * 1.2)
-        scale_height = int(target_height * 1.2)
-        fallback_filter = f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=1,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
-        fallback_cmd = [
-            'ffmpeg',
-            '-y',
+        # Create the filter string - first scale to cover the frame, then crop to exact dimensions
+        filter_string = f'scale={target_width}:{target_height}:force_original_aspect_ratio=increase,crop={target_width}:{target_height}:(in_w-{target_width})/2:(in_h-{target_height})/2'
+        
+        # Create FFmpeg command
+        cmd = [
+            'ffmpeg', '-y',
             '-ss', str(start_time),
             '-i', video_path,
             '-t', str(segment_duration),
-            '-vf', fallback_filter,
+            '-vf', filter_string,
             '-c:v', 'libx264',
-            '-preset', 'veryfast',
+            '-preset', 'medium',
             '-crf', '23',
             '-c:a', 'aac',
             '-b:a', '192k',
-            '-movflags', '+faststart',
             output_file
         ]
         
-        print(f"Running fallback command: {' '.join(fallback_cmd)}")
-        fallback_result = subprocess.run(fallback_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        # Execute command
+        result = subprocess.run(cmd, capture_output=True, text=True)
         
-        if fallback_result.returncode != 0:
-            print(f"Fallback also failed:")
-            print(fallback_result.stderr)
-            return False
-
-    # Check if file was created successfully
-    if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
-        print(f"Successfully created segment: {output_file}")
-        return True
-    else:
-        print(f"Warning: Segment file not created or empty: {output_file}")
-        return False
+        if result.returncode != 0:
+            print(f"Warning: Failed to create segment: {result.stderr}")
+            return None
+            
+        return output_file
+        
+    except Exception as e:
+        print(f"Error creating video segment: {str(e)}")
+        return None
 
 def create_video_montage(video_paths, output_duration, output_path, target_aspect="vertical_portrait", 
                          enable_panning=True, pan_strategy="random", pan_speed=1.0, 
                          pan_distance=0.2, easing_type=EasingType.EASE_IN_OUT, segment_count="some",
-                         text_array=None, text_display_duration=5, text_gap_duration=3,
-                         text_style="default", text_motion="none", intro_video=None, intro_audio=None,
-                         intro_audio_duration=5.0, intro_audio_volume=2.0):
+                         text=None, text_display_duration=5, text_style="default", text_motion="none", 
+                         intro_video=None, intro_audio=None, intro_audio_duration=5.0, intro_audio_volume=2.0):
     """Create a montage video with hardware acceleration if available."""
     
     # Create a temporary directory that will be automatically cleaned up
@@ -1054,95 +960,22 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
         for i, (video_path, start_time, duration) in enumerate(selected_segments):
             segment_file = os.path.join(temp_dir, f"segment_{i:03d}.mp4")
             
-            # Get basic scaling filter
-            scaling_filter = determine_scaling_filter(video_path, target_aspect)
+            # Create segment using the simplified approach
+            result = create_video_segment(
+                video_path=video_path,
+                start_time=start_time,
+                segment_duration=duration,
+                output_file=segment_file,
+                target_aspect=target_aspect,
+                direction=None  # We're not using panning for now
+            )
             
-            # Add panning if enabled
-            if enable_panning:
-                try:
-                    if pan_strategy == "random":
-                        pan_direction = random.choice(list(PanDirection))
-                    elif pan_strategy == "sequence":
-                        pan_direction = list(PanDirection)[i % len(list(PanDirection))]
-                    elif isinstance(pan_strategy, PanDirection):
-                        pan_direction = pan_strategy
-                    else:
-                        pan_direction = random.choice(list(PanDirection))
-                    
-                    # Create panning filter with proper scaling
-                    target_width = ASPECT_RATIOS[target_aspect]["width"]
-                    target_height = ASPECT_RATIOS[target_aspect]["height"]
-                    
-                    # Calculate frames for the segment
-                    fps = 30
-                    frames = int(duration * fps)
-                    
-                    # First scale to target dimensions with extra space for panning
-                    scale_factor = 1.2  # Scale up by 20% to allow for panning
-                    base_scale = f'scale={int(target_width*scale_factor)}:{int(target_height*scale_factor)}:force_original_aspect_ratio=1'
-                    
-                    # Add panning effect with simpler expressions
-                    if pan_direction == PanDirection.LEFT_TO_RIGHT:
-                        pan_filter = f'{base_scale},pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2'
-                    elif pan_direction == PanDirection.RIGHT_TO_LEFT:
-                        pan_filter = f'{base_scale},pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2'
-                    elif pan_direction == PanDirection.TOP_TO_BOTTOM:
-                        pan_filter = f'{base_scale},pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2'
-                    elif pan_direction == PanDirection.BOTTOM_TO_TOP:
-                        pan_filter = f'{base_scale},pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2'
-                    elif pan_direction == PanDirection.ZOOM_IN:
-                        pan_filter = f'{base_scale},pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2'
-                    elif pan_direction == PanDirection.ZOOM_OUT:
-                        pan_filter = f'{base_scale},pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2'
-                    else:
-                        pan_filter = scaling_filter
-                    
-                    # Add easing if specified
-                    if easing_type != EasingType.LINEAR:
-                        if easing_type == EasingType.EASE_IN:
-                            pan_filter = pan_filter.replace('n/', 'pow(n/,2)')
-                        elif easing_type == EasingType.EASE_OUT:
-                            pan_filter = pan_filter.replace('n/', '(1-pow(1-n/,2))')
-                        elif easing_type == EasingType.EASE_IN_OUT:
-                            pan_filter = pan_filter.replace('n/', '((1-cos(PI*n/))/2)')
-                    
-                    filter_string = pan_filter
-                    print(f"Using panning direction: {pan_direction.value}")
-                except Exception as e:
-                    print(f"Warning: Failed to generate panning filter: {e}")
-                    filter_string = scaling_filter
-            else:
-                filter_string = scaling_filter
-            
-            # Create FFmpeg command with hardware acceleration
-            cmd = [
-                'ffmpeg',
-                '-y',
-                '-ss', str(start_time),  # Start time
-                '-i', video_path,        # Input file
-                '-t', str(duration),     # Duration
-                '-vf', filter_string,    # Video filter
-                '-c:v', 'libx264',       # Video codec
-                '-c:a', 'aac',           # Audio codec
-                '-b:a', '192k',          # Audio bitrate
-                segment_file
-            ]
-            
-            print(f"\nCreating segment {i+1}/{len(selected_segments)}:")
-            print(f"Source: {os.path.basename(video_path)}")
-            print(f"Start time: {start_time:.2f}s")
-            print(f"Duration: {duration:.2f}s")
-            print(f"Output: {segment_file}")
-            print(f"Filter: {filter_string}")
-            
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-            
-            if result.returncode == 0 and os.path.exists(segment_file) and os.path.getsize(segment_file) > 0:
+            if result:
                 actual_duration = get_video_duration(segment_file)
-                print(f"Segment created successfully. Duration: {actual_duration:.2f}s")
+                print(f"Segment {i+1}/{len(selected_segments)} created successfully. Duration: {actual_duration:.2f}s")
                 segment_files.append(segment_file)
             else:
-                print(f"Warning: Failed to create segment: {result.stderr}")
+                print(f"Warning: Failed to create segment {i+1}")
         
         if not segment_files:
             raise Exception("No valid segments were created. Cannot create montage.")
@@ -1155,9 +988,8 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
                 # Add text overlay
                 text_filter = create_text_overlay_filter(
                     video_duration=output_duration,
-                    text_array=text_array,
+                    text=text,
                     display_duration=text_display_duration,
-                    gap_duration=text_gap_duration,
                     style=text_style,
                     target_aspect=target_aspect,
                     motion_type=text_motion
@@ -1190,24 +1022,26 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
                         "[main_audio][intro_audio]amix=inputs=2:duration=longest[aout]"
                     ])
                 
-                # Add video filters
-                if text_filter:
-                    filter_complex.append(f"[0:v]{text_filter}[vout]")
-                
                 # Build the final FFmpeg command
                 cmd = ['ffmpeg', '-y']
                 cmd.extend(inputs)
                 
-                if filter_complex:
-                    cmd.extend(['-filter_complex', ';'.join(filter_complex)])
-                    if text_filter:
-                        cmd.extend(['-map', '[vout]'])
-                    if intro_audio:
-                        cmd.extend(['-map', '[aout]'])
-                    else:
-                        cmd.extend(['-map', '0:a'])  # Map original audio if no intro audio
+                if text_filter:
+                    # Create filter complex with text overlay
+                    filter_complex.append(f"[0:v]{text_filter}[vout]")
+                    
+                    # Join all filter parts with semicolons
+                    filter_complex_str = ';'.join(filter_complex)
+                    cmd.extend(['-filter_complex', filter_complex_str])
+                    cmd.extend(['-map', '[vout]'])
                 else:
-                    cmd.extend(['-map', '0:v', '-map', '0:a'])  # Map both video and audio
+                    cmd.extend(['-map', '0:v'])
+                
+                # Map audio based on whether we have intro audio
+                if intro_audio and os.path.exists(intro_audio):
+                    cmd.extend(['-map', '[aout]'])
+                else:
+                    cmd.extend(['-map', '0:a'])
                 
                 # Add video codec settings
                 cmd.extend([
@@ -1289,11 +1123,9 @@ def main():
                        help='Duration of intro audio in seconds (default: 5.0)')
     parser.add_argument('--intro-audio-volume', type=float, default=2.0,
                        help='Volume multiplier for intro audio (default: 2.0)')
-    parser.add_argument('--text', nargs='+', help='Array of text strings to display')
+    parser.add_argument('--text', help='Text string to display')
     parser.add_argument('--text-duration', type=int, default=5,
-                       help='Duration to display each text (in seconds)')
-    parser.add_argument('--text-gap', type=int, default=3,
-                       help='Gap between displaying texts (in seconds)')
+                       help='Duration to display text (in seconds)')
     parser.add_argument('--text-style', choices=['default', 'pulse', 'concert', 'promo'], default='default',
                        help='Style of text overlay (default, pulse, concert, promo)')
     parser.add_argument('--text-motion', choices=[m.value for m in TextMotionType], default=TextMotionType.NONE.value,
@@ -1354,9 +1186,8 @@ def main():
             pan_distance=args.pan_distance,
             easing_type=easing_type,
             segment_count=args.segments,
-            text_array=args.text,
+            text=args.text,
             text_display_duration=args.text_duration,
-            text_gap_duration=args.text_gap,
             text_style=args.text_style,
             text_motion=args.text_motion,
             intro_video=args.intro_video,
