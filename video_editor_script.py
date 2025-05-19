@@ -20,8 +20,6 @@ ASPECT_RATIOS = {
 class PanDirection(Enum):
     LEFT_TO_RIGHT = "left_to_right"
     RIGHT_TO_LEFT = "right_to_left"
-    TOP_TO_BOTTOM = "top_to_bottom"
-    BOTTOM_TO_TOP = "bottom_to_top"
     ZOOM_IN = "zoom_in"
     ZOOM_OUT = "zoom_out"
 
@@ -435,10 +433,6 @@ def create_reliable_filter(video_path, target_aspect, direction, duration, easin
         filter_string = f"{base_filter},select=1,zoompan=x='iw*0.1*({easing_expr})':y=0:z=1:{fps_str}:{duration_str}"
     elif direction == PanDirection.RIGHT_TO_LEFT:
         filter_string = f"{base_filter},select=1,zoompan=x='iw*0.1*(1-{easing_expr})':y=0:z=1:{fps_str}:{duration_str}"
-    elif direction == PanDirection.TOP_TO_BOTTOM:
-        filter_string = f"{base_filter},select=1,zoompan=x=0:y='ih*0.1*({easing_expr})':z=1:{fps_str}:{duration_str}"
-    elif direction == PanDirection.BOTTOM_TO_TOP:
-        filter_string = f"{base_filter},select=1,zoompan=x=0:y='ih*0.1*(1-{easing_expr})':z=1:{fps_str}:{duration_str}"
     elif direction == PanDirection.ZOOM_IN:
         filter_string = f"{base_filter},select=1,zoompan=x='iw/4':y='ih/4':z='1+0.1*({easing_expr})':{fps_str}:{duration_str}"
     elif direction == PanDirection.ZOOM_OUT:
@@ -897,9 +891,9 @@ def create_video_segment(video_path, start_time, segment_duration, output_file, 
         # Get input video dimensions
         input_width, input_height = get_video_dimensions(video_path)
         
-        # Calculate scaling factors
-        width_scale = target_width / input_width
-        height_scale = target_height / input_height
+        # Calculate scaling factors - scale up more to allow for movement
+        width_scale = (target_width * 1.5) / input_width  # Scale up by 50% to allow for movement
+        height_scale = (target_height * 1.5) / input_height
         scale_factor = max(width_scale, height_scale)
         
         # Calculate new dimensions after scaling
@@ -910,32 +904,27 @@ def create_video_segment(video_path, start_time, segment_duration, output_file, 
         crop_x = max(0, (new_width - target_width) // 2)
         crop_y = max(0, (new_height - target_height) // 2)
         
-        # Base filter for scaling and cropping
-        base_filter = (
-            f"scale={new_width}:{new_height}:force_original_aspect_ratio=1,"
-            f"crop={target_width}:{target_height}:{crop_x}:{crop_y}"
-        )
+        # Base filter for scaling
+        base_filter = f"scale={new_width}:{new_height}:force_original_aspect_ratio=1"
         
         # Add panning if needed
         if direction and segment_duration >= 2.0:
-            # Calculate pan distance (10% of frame size)
-            pan_distance = 0.1
+            # Calculate pan distance (30% of frame size for more noticeable movement)
+            pan_distance = 0.3
             
             # Create panning filter based on direction
             if direction == PanDirection.LEFT_TO_RIGHT:
+                # Pan from left to right
                 pan_filter = f"crop=w={target_width}:h={target_height}:x='{crop_x}+({new_width-target_width})*{pan_distance}*t/{segment_duration}':y={crop_y}"
             elif direction == PanDirection.RIGHT_TO_LEFT:
+                # Pan from right to left
                 pan_filter = f"crop=w={target_width}:h={target_height}:x='{crop_x}+({new_width-target_width})*{pan_distance}*(1-t/{segment_duration})':y={crop_y}"
-            elif direction == PanDirection.TOP_TO_BOTTOM:
-                pan_filter = f"crop=w={target_width}:h={target_height}:x={crop_x}:y='{crop_y}+({new_height-target_height})*{pan_distance}*t/{segment_duration}'"
-            elif direction == PanDirection.BOTTOM_TO_TOP:
-                pan_filter = f"crop=w={target_width}:h={target_height}:x={crop_x}:y='{crop_y}+({new_height-target_height})*{pan_distance}*(1-t/{segment_duration})'"
             elif direction == PanDirection.ZOOM_IN:
-                # For zoom in, we'll use a simple scale filter
-                pan_filter = f"scale='{target_width}*(1+{pan_distance}*t/{segment_duration})':'{target_height}*(1+{pan_distance}*t/{segment_duration})'"
+                # Zoom in effect
+                pan_filter = f"crop=w='{target_width}*(1+{pan_distance}*t/{segment_duration})':h='{target_height}*(1+{pan_distance}*t/{segment_duration})':x='({new_width}-{target_width}*(1+{pan_distance}*t/{segment_duration}))/2':y='({new_height}-{target_height}*(1+{pan_distance}*t/{segment_duration}))/2'"
             elif direction == PanDirection.ZOOM_OUT:
-                # For zoom out, we'll use a simple scale filter
-                pan_filter = f"scale='{target_width}*(1+{pan_distance}-{pan_distance}*t/{segment_duration})':'{target_height}*(1+{pan_distance}-{pan_distance}*t/{segment_duration})'"
+                # Zoom out effect
+                pan_filter = f"crop=w='{target_width}*(1+{pan_distance}-{pan_distance}*t/{segment_duration})':h='{target_height}*(1+{pan_distance}-{pan_distance}*t/{segment_duration})':x='({new_width}-{target_width}*(1+{pan_distance}-{pan_distance}*t/{segment_duration}))/2':y='({new_height}-{target_height}*(1+{pan_distance}-{pan_distance}*t/{segment_duration}))/2'"
             else:
                 pan_filter = ""
             
@@ -945,7 +934,8 @@ def create_video_segment(video_path, start_time, segment_duration, output_file, 
             else:
                 filter_string = base_filter
         else:
-            filter_string = base_filter
+            # If no panning, just crop to target size
+            filter_string = f"{base_filter},crop={target_width}:{target_height}:{crop_x}:{crop_y}"
         
         # Create FFmpeg command with hardware acceleration if available
         hw_encoder, _, thread_count = detect_hardware_encoders()
