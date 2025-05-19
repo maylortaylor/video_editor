@@ -802,7 +802,7 @@ def create_concat_file(segment_files, temp_dir):
         print(f"Error creating concat file: {e}")
         return None
 
-def fallback_create_output(segment_files, output_path, video_duration, target_aspect, text=None, text_style="default", text_motion="none", text_display_duration=5):
+def fallback_create_output(segment_files, output_path, video_duration, target_aspect, text=None, text_style="default", text_motion="none", text_display_duration=5, intro_video=None, intro_audio=None, intro_audio_duration=5.0, intro_audio_volume=2.0):
     """Fallback method: Create output video by directly encoding all segments into one file."""
     print("Using fallback method to create video...")
     
@@ -814,17 +814,37 @@ def fallback_create_output(segment_files, output_path, video_duration, target_as
     filter_complex = []
     inputs = []
     
+    # Add intro video if provided
+    if intro_video and os.path.exists(intro_video):
+        inputs.extend(['-i', intro_video])
+        filter_complex.append(f"[0:v]scale={target_width}:{target_height}[intro_v]")
+        filter_complex.append(f"[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[intro_a]")
+    
+    # Add main segments
     for i, segment_file in enumerate(segment_files):
         inputs.extend(['-i', segment_file])
-        filter_complex.append(f"[{i}:v]scale={target_width}:{target_height}[v{i}]")
-        filter_complex.append(f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{i}]")
+        filter_complex.append(f"[{i+1}:v]scale={target_width}:{target_height}[v{i}]")
+        filter_complex.append(f"[{i+1}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{i}]")
     
-    # Concatenate all video and audio streams
-    vid_concat = ';'.join(filter_complex) + ";" + \
-                 ''.join([f"[v{i}]" for i in range(len(segment_files))]) + \
-                 f"concat=n={len(segment_files)}:v=1:a=0[outv];" + \
-                 ''.join([f"[a{i}]" for i in range(len(segment_files))]) + \
-                 f"concat=n={len(segment_files)}:v=0:a=1[outa]"
+    # Concatenate video streams
+    if intro_video and os.path.exists(intro_video):
+        # Concatenate intro with main segments
+        vid_concat = ''.join([f"[intro_v]" if i == 0 else f"[v{i-1}]" for i in range(len(segment_files) + 1)]) + \
+                    f"concat=n={len(segment_files) + 1}:v=1:a=0[outv]"
+    else:
+        # Concatenate only main segments
+        vid_concat = ''.join([f"[v{i}]" for i in range(len(segment_files))]) + \
+                    f"concat=n={len(segment_files)}:v=1:a=0[outv]"
+    
+    # Handle audio mixing
+    if intro_video and os.path.exists(intro_video) and intro_audio and os.path.exists(intro_audio):
+        # Mix intro audio with main audio
+        audio_mix = ''.join([f"[intro_a]" if i == 0 else f"[a{i-1}]" for i in range(len(segment_files) + 1)]) + \
+                   f"concat=n={len(segment_files) + 1}:v=0:a=1[outa]"
+    else:
+        # Concatenate only main audio
+        audio_mix = ''.join([f"[a{i}]" for i in range(len(segment_files))]) + \
+                   f"concat=n={len(segment_files)}:v=0:a=1[outa]"
     
     # Add text overlay if provided
     if text:
@@ -844,11 +864,15 @@ def fallback_create_output(segment_files, output_path, video_duration, target_as
     else:
         video_output = "[outv]"
     
+    # Combine all filter parts
+    filter_complex.extend([vid_concat, audio_mix])
+    filter_complex_str = ';'.join(filter_complex)
+    
     # Build the full command
     cmd = ['ffmpeg', '-y']
     cmd.extend(inputs)
     cmd.extend([
-        '-filter_complex', vid_concat,
+        '-filter_complex', filter_complex_str,
         '-map', video_output,
         '-map', '[outa]',
         '-c:v', 'libx264',
@@ -862,6 +886,21 @@ def fallback_create_output(segment_files, output_path, video_duration, target_as
     
     print("Executing fallback FFmpeg command...")
     print("Command:", ' '.join(cmd))
+    print("Filter complex:", filter_complex_str)
+    
+    # First, test if the filter complex is valid
+    test_cmd = ['ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=1:size=1920x1080:rate=30', '-filter_complex', filter_complex_str, '-f', 'null', '-']
+    try:
+        test_result = subprocess.run(test_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        if test_result.returncode != 0:
+            print("Filter complex test failed:")
+            print(test_result.stderr)
+            raise Exception("Invalid filter complex string")
+    except Exception as e:
+        print(f"Error testing filter complex: {e}")
+        raise
+    
+    # Execute the actual command
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     
     if result.returncode != 0:
@@ -1048,6 +1087,14 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
         print(f"\nUsing temporary directory: {temp_dir}")
         segment_files = []
         
+        # Process intro video if provided
+        intro_segment = None
+        if intro_video and os.path.exists(intro_video):
+            intro_segment = process_intro_segment(intro_video, target_aspect, temp_dir)
+            if intro_segment:
+                segment_files.append(intro_segment)
+                print(f"Added intro video segment: {get_video_duration(intro_segment):.2f} seconds")
+        
         # Detect available hardware encoder
         hw_encoder, _, thread_count = detect_hardware_encoders()
         if hw_encoder:
@@ -1064,8 +1111,8 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
         print(f"Creating {num_segments_needed} segments...")
         
         # Calculate segment duration to match output duration
-        if intro_video:
-            intro_duration = get_video_duration(intro_video)
+        if intro_segment:
+            intro_duration = get_video_duration(intro_segment)
             remaining_duration = max(0, output_duration - intro_duration)
             segment_duration = remaining_duration / num_segments_needed
         else:
@@ -1114,14 +1161,6 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
         print("\nSelected segments for montage:")
         for i, (video_path, start_time, duration) in enumerate(selected_segments):
             print(f"Segment {i+1}: {os.path.basename(video_path)} at {start_time:.2f}s for {duration:.2f}s")
-        
-        # Process intro video if provided
-        intro_segment = None
-        if intro_video:
-            intro_segment = process_intro_segment(intro_video, target_aspect, temp_dir)
-            if intro_segment:
-                segment_files.append(intro_segment)
-                print(f"Added intro video segment: {get_video_duration(intro_segment):.2f} seconds")
         
         # Extract regular segments to temporary files
         successful_segments = 0
@@ -1282,12 +1321,38 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
                 
             else:
                 # Fallback to direct encoding if concat fails
-                fallback_create_output(segment_files, output_path, output_duration, target_aspect, text, text_style, text_motion, text_display_duration)
+                fallback_create_output(
+                    segment_files=segment_files,
+                    output_path=output_path,
+                    video_duration=output_duration,
+                    target_aspect=target_aspect,
+                    text=text,
+                    text_style=text_style,
+                    text_motion=text_motion,
+                    text_display_duration=text_display_duration,
+                    intro_video=intro_video,
+                    intro_audio=intro_audio,
+                    intro_audio_duration=intro_audio_duration,
+                    intro_audio_volume=intro_audio_volume
+                )
                 
         except Exception as e:
             print(f"Error during montage creation: {e}")
             print("Trying direct encoding fallback method...")
-            fallback_create_output(segment_files, output_path, output_duration, target_aspect, text, text_style, text_motion, text_display_duration)
+            fallback_create_output(
+                segment_files=segment_files,
+                output_path=output_path,
+                video_duration=output_duration,
+                target_aspect=target_aspect,
+                text=text,
+                text_style=text_style,
+                text_motion=text_motion,
+                text_display_duration=text_display_duration,
+                intro_video=intro_video,
+                intro_audio=intro_audio,
+                intro_audio_duration=intro_audio_duration,
+                intro_audio_volume=intro_audio_volume
+            )
     finally:
         # Clean up temporary files
         print("\nCleaning up temporary files...")

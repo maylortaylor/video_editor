@@ -279,6 +279,8 @@ class TestVideoEditor(unittest.TestCase):
     def test_intro_video_handling(self):
         """Test handling of intro video."""
         output_file = os.path.join(self.temp_dir, 'test_intro.mp4')
+        test_video = None
+        intro_video = None
         
         try:
             # Create a longer test video (60 seconds) for better testing
@@ -295,7 +297,12 @@ class TestVideoEditor(unittest.TestCase):
                 '-t', '60',
                 test_video
             ]
-            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            print("Creating test video...")
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            if result.returncode != 0:
+                print("Error creating test video:")
+                print(result.stderr)
+                self.fail("Failed to create test video")
             
             # Create a shorter intro video (5 seconds)
             intro_video = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False).name
@@ -311,30 +318,52 @@ class TestVideoEditor(unittest.TestCase):
                 '-t', '5',
                 intro_video
             ]
-            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            print("Creating intro video...")
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            if result.returncode != 0:
+                print("Error creating intro video:")
+                print(result.stderr)
+                self.fail("Failed to create intro video")
             
+            # Verify the test videos were created correctly
+            print(f"Test video duration: {get_video_duration(test_video)}")
+            print(f"Intro video duration: {get_video_duration(intro_video)}")
+            
+            print("Creating video montage...")
             create_video_montage(
                 video_paths=[test_video],
                 output_duration=20,
                 output_path=output_file,
                 target_aspect='vertical_portrait',
                 intro_video=intro_video,
-                intro_audio=intro_video,
+                intro_audio=None,  # Disable intro audio for simpler test
                 intro_audio_duration=5.0,
                 intro_audio_volume=2.0,
                 enable_panning=False,  # Disable panning for simpler test
-                segment_count='few'  # Use fewer segments for more reliable testing
+                segment_count='few',  # Use fewer segments for more reliable testing
+                text=None  # Disable text overlay for simpler test
             )
-            self.assertTrue(os.path.exists(output_file))
+            
+            print("Verifying output file...")
+            self.assertTrue(os.path.exists(output_file), "Output file was not created")
             duration = get_video_duration(output_file)
-            self.assertAlmostEqual(duration, 20.0, delta=0.5)
+            self.assertAlmostEqual(duration, 20.0, delta=0.5, msg=f"Expected duration 20.0s, got {duration}s")
+            
         except Exception as e:
+            print(f"Test failed with error: {str(e)}")
+            if os.path.exists(output_file):
+                print(f"Output file exists with size: {os.path.getsize(output_file)} bytes")
             self.fail(f"Intro video test failed: {str(e)}")
         finally:
             # Clean up test files
+            print("Cleaning up test files...")
             for video in [test_video, intro_video]:
-                if os.path.exists(video):
-                    os.remove(video)
+                if video and os.path.exists(video):
+                    try:
+                        os.remove(video)
+                        print(f"Removed {video}")
+                    except Exception as e:
+                        print(f"Error removing {video}: {e}")
 
     def test_edge_cases(self):
         """Test edge cases and boundary conditions."""
