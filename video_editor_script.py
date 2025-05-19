@@ -877,33 +877,24 @@ def create_video_segment(video_path, start_time, segment_duration, output_file, 
 
     # For short segments, use simple scaling
     if segment_duration < 2.0:
-        filter_string = f"scale={target_width}:{target_height}:force_original_aspect_ratio=1,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
+        # Scale up by 20% to ensure we have enough room for padding
+        scale_width = int(target_width * 1.2)
+        scale_height = int(target_height * 1.2)
+        filter_string = f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=1,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
     else:
         # For vertical portrait format, handle scaling differently
         if target_aspect == "vertical_portrait":
-            # Scale to match height first, then pad to width
-            base_filter = f"scale=-1:{target_height}:force_original_aspect_ratio=1"
+            # Scale up by 20% to ensure we have enough room for padding
+            scale_height = int(target_height * 1.2)
+            base_filter = f"scale=-1:{scale_height}:force_original_aspect_ratio=1"
             base_filter += f",pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
         else:
-            # For other formats, scale to width first, then pad to height
-            base_filter = f"scale={target_width}:-1:force_original_aspect_ratio=1"
+            # For other formats, scale up by 20% to ensure we have enough room for padding
+            scale_width = int(target_width * 1.2)
+            base_filter = f"scale={scale_width}:-1:force_original_aspect_ratio=1"
             base_filter += f",pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
 
-        # Add panning effect with simpler expressions
-        if direction == PanDirection.LEFT_TO_RIGHT:
-            filter_string = f"{base_filter},select=1,zoompan=x=\'iw*0.1*(n/{frames})\':y=0:z=1:{fps_str}:{duration_str}"
-        elif direction == PanDirection.RIGHT_TO_LEFT:
-            filter_string = f"{base_filter},select=1,zoompan=x=\'iw*0.1*(1-n/{frames})\':y=0:z=1:{fps_str}:{duration_str}"
-        elif direction == PanDirection.TOP_TO_BOTTOM:
-            filter_string = f"{base_filter},select=1,zoompan=x=0:y=\'ih*0.1*(n/{frames})\':z=1:{fps_str}:{duration_str}"
-        elif direction == PanDirection.BOTTOM_TO_TOP:
-            filter_string = f"{base_filter},select=1,zoompan=x=0:y=\'ih*0.1*(1-n/{frames})\':z=1:{fps_str}:{duration_str}"
-        elif direction == PanDirection.ZOOM_IN:
-            filter_string = f"{base_filter},select=1,zoompan=x=\'iw/4\':y=\'ih/4\':z=\'1+0.1*(n/{frames})\':{fps_str}:{duration_str}"
-        elif direction == PanDirection.ZOOM_OUT:
-            filter_string = f"{base_filter},select=1,zoompan=x=0:y=0:z=\'1+0.1-0.1*(n/{frames})\':{fps_str}:{duration_str}"
-        else:
-            filter_string = base_filter
+        filter_string = base_filter
 
     print(f"Using filter string: {filter_string}")
 
@@ -933,7 +924,10 @@ def create_video_segment(video_path, start_time, segment_duration, output_file, 
         
         # Try fallback with even simpler filter
         print("Trying fallback with simpler filter...")
-        fallback_filter = f"scale={target_width}:{target_height}:force_original_aspect_ratio=1,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
+        # Scale up by 20% to ensure we have enough room for padding
+        scale_width = int(target_width * 1.2)
+        scale_height = int(target_height * 1.2)
+        fallback_filter = f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=1,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
         fallback_cmd = [
             'ffmpeg',
             '-y',
