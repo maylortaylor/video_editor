@@ -203,3 +203,74 @@ MIT License - feel free to use this in your projects!
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Testing
+
+The project includes a comprehensive test suite to ensure reliability and prevent regressions. The tests cover all major functionality including panning, zooming, aspect ratio handling, and error cases.
+
+### Running Tests
+
+To run the test suite:
+
+```bash
+python3 -m unittest test_video_editor.py -v
+```
+
+For more detailed output:
+
+```bash
+python3 -m unittest test_video_editor.py -v -f
+```
+
+### Test Coverage
+
+The test suite includes:
+
+1. **Basic Video Operations**
+   - Video duration detection
+   - Video dimension detection
+   - Scaling filter generation
+
+2. **Panning and Zooming**
+   - All panning directions (LEFT_TO_RIGHT, RIGHT_TO_LEFT)
+   - Zoom effects (ZOOM_IN, ZOOM_OUT)
+   - Segment duration verification with panning
+
+3. **Filter Validation**
+   - Valid and invalid filter string testing
+   - FFmpeg filter parsing verification
+
+4. **Montage Creation**
+   - Different segment counts (few, some, lots)
+   - Output duration accuracy
+   - Panning strategy verification
+
+5. **Aspect Ratio Handling**
+   - All supported aspect ratios
+   - Output dimension verification
+
+6. **Error Handling**
+   - Invalid video paths
+   - Invalid aspect ratios
+   - Invalid filter strings
+
+7. **Duration Accuracy**
+   - Segment duration verification
+   - Montage duration verification
+
+### Test Environment
+
+The test suite:
+- Creates temporary test videos using FFmpeg's testsrc
+- Uses a temporary directory for all test outputs
+- Automatically cleans up all test files
+- Provides detailed error reporting
+- Uses subTests for better organization
+
+### Adding New Tests
+
+When adding new features, please add corresponding tests to ensure:
+1. The feature works as expected
+2. Edge cases are handled properly
+3. Error conditions are caught
+4. Performance is maintained
