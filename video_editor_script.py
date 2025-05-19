@@ -286,14 +286,14 @@ def extract_interesting_segments(video_path, num_segments=10, target_duration=3)
 def get_segment_range(segment_count):
     """Get min and max segments based on segment count setting."""
     if segment_count == "few":
-        return random.randint(3, 7)
+        return 4  # Fixed number for better duration control
     elif segment_count == "some":
-        return random.randint(6, 12)
+        return 6  # Fixed number for better duration control
     elif segment_count == "lots":
-        return random.randint(10, 25)
+        return 8  # Fixed number for better duration control
     else:
         # Default to "some" if invalid value provided
-        return random.randint(6, 12)
+        return 6
 
 def test_filter_string(filter_string):
     """
@@ -891,9 +891,9 @@ def create_video_segment(video_path, start_time, segment_duration, output_file, 
         # Get input video dimensions
         input_width, input_height = get_video_dimensions(video_path)
         
-        # Calculate scaling factors - scale up more to allow for movement
-        width_scale = (target_width * 1.5) / input_width  # Scale up by 50% to allow for movement
-        height_scale = (target_height * 1.5) / input_height
+        # Calculate scaling factors - scale up by 20% to allow for movement
+        width_scale = (target_width * 1.2) / input_width
+        height_scale = (target_height * 1.2) / input_height
         scale_factor = max(width_scale, height_scale)
         
         # Calculate new dimensions after scaling
@@ -909,22 +909,23 @@ def create_video_segment(video_path, start_time, segment_duration, output_file, 
         
         # Add panning if needed
         if direction and segment_duration >= 2.0:
-            # Calculate pan distance (30% of frame size for more noticeable movement)
-            pan_distance = 0.3
+            # Calculate frames for duration
+            fps = 30  # Assuming 30fps
+            duration_frames = int(segment_duration * fps)
             
             # Create panning filter based on direction
             if direction == PanDirection.LEFT_TO_RIGHT:
-                # Pan from left to right
-                pan_filter = f"crop=w={target_width}:h={target_height}:x='{crop_x}+({new_width-target_width})*{pan_distance}*t/{segment_duration}':y={crop_y}"
+                # Pan from left to right using frame number
+                pan_filter = f"crop=w={target_width}:h={target_height}:x='{crop_x}+({new_width-target_width})*0.2*n/{duration_frames}':y={crop_y}"
             elif direction == PanDirection.RIGHT_TO_LEFT:
-                # Pan from right to left
-                pan_filter = f"crop=w={target_width}:h={target_height}:x='{crop_x}+({new_width-target_width})*{pan_distance}*(1-t/{segment_duration})':y={crop_y}"
+                # Pan from right to left using frame number
+                pan_filter = f"crop=w={target_width}:h={target_height}:x='{crop_x}+({new_width-target_width})*0.2*(1-n/{duration_frames})':y={crop_y}"
             elif direction == PanDirection.ZOOM_IN:
-                # Zoom in effect
-                pan_filter = f"crop=w='{target_width}*(1+{pan_distance}*t/{segment_duration})':h='{target_height}*(1+{pan_distance}*t/{segment_duration})':x='({new_width}-{target_width}*(1+{pan_distance}*t/{segment_duration}))/2':y='({new_height}-{target_height}*(1+{pan_distance}*t/{segment_duration}))/2'"
+                # Zoom in effect using frame number
+                pan_filter = f"crop=w='{target_width}*(1+0.2*n/{duration_frames})':h='{target_height}*(1+0.2*n/{duration_frames})':x='({new_width}-{target_width}*(1+0.2*n/{duration_frames}))/2':y='({new_height}-{target_height}*(1+0.2*n/{duration_frames}))/2'"
             elif direction == PanDirection.ZOOM_OUT:
-                # Zoom out effect
-                pan_filter = f"crop=w='{target_width}*(1+{pan_distance}-{pan_distance}*t/{segment_duration})':h='{target_height}*(1+{pan_distance}-{pan_distance}*t/{segment_duration})':x='({new_width}-{target_width}*(1+{pan_distance}-{pan_distance}*t/{segment_duration}))/2':y='({new_height}-{target_height}*(1+{pan_distance}-{pan_distance}*t/{segment_duration}))/2'"
+                # Zoom out effect using frame number
+                pan_filter = f"crop=w='{target_width}*(1+0.2-0.2*n/{duration_frames})':h='{target_height}*(1+0.2-0.2*n/{duration_frames})':x='({new_width}-{target_width}*(1+0.2-0.2*n/{duration_frames}))/2':y='({new_height}-{target_height}*(1+0.2-0.2*n/{duration_frames}))/2'"
             else:
                 pan_filter = ""
             
@@ -1047,12 +1048,11 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
         else:
             print(f"Using CPU encoding (libx264) with {thread_count} threads")
         
-        # Calculate number of segments based on segment_count setting
+        # Get fixed number of segments based on segment_count setting
         num_segments_needed = get_segment_range(segment_count)
         print(f"Creating {num_segments_needed} segments...")
         
         # Calculate segment duration to match output duration
-        total_segments = num_segments_needed
         if intro_video:
             intro_duration = get_video_duration(intro_video)
             remaining_duration = max(0, output_duration - intro_duration)
@@ -1060,7 +1060,7 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
         else:
             segment_duration = output_duration / num_segments_needed
         
-        print(f"Each segment will be approximately {segment_duration:.2f} seconds")
+        print(f"Each segment will be exactly {segment_duration:.2f} seconds")
         
         # Extract segments from each video
         all_segments = []
@@ -1069,8 +1069,8 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
             segments = extract_interesting_segments(video_path, num_segments_needed * 3, segment_duration)
             
             # Add segments with their source video
-            for start_time, seg_duration in segments:
-                all_segments.append((video_path, start_time, min(seg_duration, segment_duration)))
+            for start_time, _ in segments:
+                all_segments.append((video_path, start_time, segment_duration))  # Use exact segment duration
         
         # Shuffle all segments
         random.shuffle(all_segments)
@@ -1113,6 +1113,7 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
                 print(f"Added intro video segment: {get_video_duration(intro_segment):.2f} seconds")
         
         # Extract regular segments to temporary files
+        successful_segments = 0
         for i, (video_path, start_time, duration) in enumerate(selected_segments):
             segment_file = os.path.join(temp_dir, f"segment_{i:03d}.mp4")
             
@@ -1143,8 +1144,29 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
                 if current_direction:
                     print(f"Using panning direction: {current_direction.value}")
                 segment_files.append(segment_file)
+                successful_segments += 1
             else:
                 print(f"Warning: Failed to create segment {i+1}")
+                # Try again with a different segment
+                for alt_segment in all_segments:
+                    if alt_segment not in selected_segments:
+                        alt_result = create_video_segment(
+                            video_path=alt_segment[0],
+                            start_time=alt_segment[1],
+                            segment_duration=duration,
+                            output_file=segment_file,
+                            target_aspect=target_aspect,
+                            direction=current_direction
+                        )
+                        if alt_result:
+                            actual_duration = get_video_duration(segment_file)
+                            print(f"Alternative segment created successfully. Duration: {actual_duration:.2f}s")
+                            segment_files.append(segment_file)
+                            successful_segments += 1
+                            break
+        
+        if successful_segments < num_segments_needed:
+            raise Exception(f"Could not create enough valid segments. Created {successful_segments}, needed {num_segments_needed}")
         
         if not segment_files:
             raise Exception("No valid segments were created. Cannot create montage.")
@@ -1170,7 +1192,7 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
                 
                 # Prepare final FFmpeg command
                 filter_complex = []
-                inputs = ['-i', temp_output]  # Main video input
+                inputs = ['-i', temp_output]
                 
                 # Add intro audio if provided
                 if intro_audio and os.path.exists(intro_audio):
@@ -1239,6 +1261,11 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
                     print(f"\nOutput video created successfully:")
                     print(f"Duration: {actual_duration:.2f}s")
                     print(f"Size: {os.path.getsize(output_path) / (1024*1024):.2f} MB")
+                    
+                    # Verify duration
+                    if abs(actual_duration - output_duration) > 0.5:  # Allow 0.5s tolerance
+                        print(f"Warning: Output duration mismatch. Expected {output_duration}s, got {actual_duration}s")
+                        raise Exception("Output video duration does not match requested duration")
                 else:
                     raise Exception("Output file was not created or is empty")
                 
