@@ -44,6 +44,32 @@ python3 video_editor_script.py \
      --text="@Suite.E.Studios" \
      --text="#FinalFriday" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
+
+python3 video_editor_script.py \
+     -o panning_montage.mp4 \
+     -f vertical_portrait \
+     -d 30 \
+     --segments few \
+     --text-style concert \
+     --text="@Suite.E.Studios" --text="#FinalFriday" --text="@StPeteMusic" \
+     --pan-speed 1.0 \
+     --pan-distance 0.2 \
+     --easing ease_in_out \
+     "/Users/matttaylor/Documents/Maylor/test.MP4"
+
+python3 video_editor_script.py \
+     -o panning_montage.mp4 \
+     -f vertical_portrait \
+     -d 30 \
+     --segments few \
+     --text-style concert \
+     --text="@Suite.E.Studios" --text="#FinalFriday" --text="@StPeteMusic" \
+     --text-motion dvd_bounce \
+     --panning \
+     --pan-speed 0.5 \
+     --pan-distance 0.15 \
+     --easing ease_in_out \
+     "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
 
 3. Professional Promo with Intro (30s):
