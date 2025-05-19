@@ -802,7 +802,7 @@ def create_concat_file(segment_files, temp_dir):
         print(f"Error creating concat file: {e}")
         return None
 
-def fallback_create_output(segment_files, output_path, video_duration, target_aspect):
+def fallback_create_output(segment_files, output_path, video_duration, target_aspect, text=None, text_style="default", text_motion="none", text_display_duration=5):
     """Fallback method: Create output video by directly encoding all segments into one file."""
     print("Using fallback method to create video...")
     
@@ -826,11 +826,21 @@ def fallback_create_output(segment_files, output_path, video_duration, target_as
                  ''.join([f"[a{i}]" for i in range(len(segment_files))]) + \
                  f"concat=n={len(segment_files)}:v=0:a=1[outa]"
     
-    # Add text overlay
-    text_filter = create_text_overlay_filter(video_duration)
-    if text_filter:
-        vid_concat += f";[outv]{text_filter}[finalv]"
-        video_output = "[finalv]"
+    # Add text overlay if provided
+    if text:
+        text_filter = create_text_overlay_filter(
+            video_duration=video_duration,
+            text=text,
+            display_duration=text_display_duration,
+            style=text_style,
+            target_aspect=target_aspect,
+            motion_type=text_motion
+        )
+        if text_filter:
+            vid_concat += f";[outv]{text_filter}[finalv]"
+            video_output = "[finalv]"
+        else:
+            video_output = "[outv]"
     else:
         video_output = "[outv]"
     
@@ -851,6 +861,7 @@ def fallback_create_output(segment_files, output_path, video_duration, target_as
     ])
     
     print("Executing fallback FFmpeg command...")
+    print("Command:", ' '.join(cmd))
     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     
     if result.returncode != 0:
@@ -1271,12 +1282,12 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
                 
             else:
                 # Fallback to direct encoding if concat fails
-                fallback_create_output(segment_files, output_path, output_duration, target_aspect)
+                fallback_create_output(segment_files, output_path, output_duration, target_aspect, text, text_style, text_motion, text_display_duration)
                 
         except Exception as e:
             print(f"Error during montage creation: {e}")
             print("Trying direct encoding fallback method...")
-            fallback_create_output(segment_files, output_path, output_duration, target_aspect)
+            fallback_create_output(segment_files, output_path, output_duration, target_aspect, text, text_style, text_motion, text_display_duration)
     finally:
         # Clean up temporary files
         print("\nCleaning up temporary files...")
