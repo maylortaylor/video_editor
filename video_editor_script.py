@@ -12,8 +12,7 @@ from enum import Enum
 
 # Social media aspect ratios
 ASPECT_RATIOS = {
-    "instagram_reel": {"width": 1080, "height": 1920, "description": "Instagram Reel (9:16)"},
-    "tiktok": {"width": 1080, "height": 1920, "description": "TikTok (9:16)"},
+    "vertical_portrait": {"width": 1080, "height": 1920, "description": "Vertical Portrait (9:16)"},
     "instagram_square": {"width": 1080, "height": 1080, "description": "Instagram Square (1:1)"},
 }
 
@@ -94,39 +93,40 @@ def determine_scaling_filter(video_path, target_aspect):
     # For vertical videos (Instagram Reels, TikTok)
     if target_ratio < 1:  # Target is portrait/vertical
         if video_aspect > 1:  # Input is landscape
-            # First scale to match target height, then crop width
+            # Scale to match target height while maintaining aspect ratio
             scale_height = target_height
-            scale_width = int(scale_height * video_aspect)
+            scale_width = int(target_height * video_aspect)
+            # Center crop to target width
             crop_x = (scale_width - target_width) // 2
-            return f"scale={scale_width}:{scale_height},crop={target_width}:{target_height}:{crop_x}:0"
+            return f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=1,crop={target_width}:{target_height}:{crop_x}:0"
         else:  # Input is already portrait/vertical or square
-            # Scale to match target width, then crop height if needed
+            # Scale to match target width while maintaining aspect ratio
             scale_width = target_width
-            scale_height = int(scale_width / video_aspect)
+            scale_height = int(target_width / video_aspect)
             if scale_height < target_height:
                 # If scaled height is smaller, scale to target height instead
                 scale_height = target_height
                 scale_width = int(scale_height * video_aspect)
                 crop_x = (scale_width - target_width) // 2
-                return f"scale={scale_width}:{scale_height},crop={target_width}:{target_height}:{crop_x}:0"
+                return f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=1,crop={target_width}:{target_height}:{crop_x}:0"
             else:
                 crop_y = (scale_height - target_height) // 2
-                return f"scale={scale_width}:{scale_height},crop={target_width}:{target_height}:0:{crop_y}"
+                return f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=1,crop={target_width}:{target_height}:0:{crop_y}"
     
     # For square videos (Instagram Square)
     else:  # Target is square (1:1)
         if video_aspect > 1:  # Input is landscape
-            # Scale to target height, then crop width to make square
+            # Scale to target height while maintaining aspect ratio
             scale_height = target_height
             scale_width = int(scale_height * video_aspect)
-            crop_x = (scale_width - target_height) // 2
-            return f"scale={scale_width}:{scale_height},crop={target_height}:{target_height}:{crop_x}:0"
+            crop_x = (scale_width - target_width) // 2
+            return f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=1,crop={target_width}:{target_height}:{crop_x}:0"
         else:  # Input is portrait/vertical
-            # Scale to target width, then crop height to make square
+            # Scale to target width while maintaining aspect ratio
             scale_width = target_width
             scale_height = int(scale_width / video_aspect)
-            crop_y = (scale_height - target_width) // 2
-            return f"scale={scale_width}:{scale_height},crop={target_width}:{target_width}:0:{crop_y}"
+            crop_y = (scale_height - target_height) // 2
+            return f"scale={scale_width}:{scale_height}:force_original_aspect_ratio=1,crop={target_width}:{target_height}:0:{crop_y}"
 
 def generate_easing_expression(easing_type, t_str):
     """Generate easing expressions for smooth panning effects"""
@@ -151,19 +151,19 @@ def generate_ultra_simple_pan_filter(direction, duration, pan_speed=1.0, pan_dis
     zoom_factor = 1.0 + pan_distance
 
     if direction == PanDirection.LEFT_TO_RIGHT:
-        return f"scale={zoom_factor}*iw:-1,zoompan=z=1:x='iw*{pan_distance}*(n/{frames})':y=0:fps={fps}:d={frames}"
+        return f'scale={zoom_factor}*iw:-1,zoompan=z=1:x=\'iw*{pan_distance}*(n/{frames})\':y=0:fps={fps}:d={frames}'
     elif direction == PanDirection.RIGHT_TO_LEFT:
-        return f"scale={zoom_factor}*iw:-1,zoompan=z=1:x='iw*{pan_distance}*(1-(n/{frames}))':y=0:fps={fps}:d={frames}"
+        return f'scale={zoom_factor}*iw:-1,zoompan=z=1:x=\'iw*{pan_distance}*(1-n/{frames})\':y=0:fps={fps}:d={frames}'
     elif direction == PanDirection.TOP_TO_BOTTOM:
-        return f"scale={zoom_factor}*iw:-1,zoompan=z=1:x=0:y='ih*{pan_distance}*(n/{frames})':fps={fps}:d={frames}"
+        return f'scale={zoom_factor}*iw:-1,zoompan=z=1:x=0:y=\'ih*{pan_distance}*(n/{frames})\':fps={fps}:d={frames}'
     elif direction == PanDirection.BOTTOM_TO_TOP:
-        return f"scale={zoom_factor}*iw:-1,zoompan=z=1:x=0:y='ih*{pan_distance}*(1-(n/{frames}))':fps={fps}:d={frames}"
+        return f'scale={zoom_factor}*iw:-1,zoompan=z=1:x=0:y=\'ih*{pan_distance}*(1-n/{frames})\':fps={fps}:d={frames}'
     elif direction == PanDirection.ZOOM_IN:
-        return f"scale={zoom_factor}*iw:-1,zoompan=z='1+{pan_distance}*(n/{frames})':x='(iw-iw/z)/2':y='(ih-ih/z)/2':fps={fps}:d={frames}"
+        return f'scale={zoom_factor}*iw:-1,zoompan=z=\'1+{pan_distance}*(n/{frames})\':x=\'(iw-iw/z)/2\':y=\'(ih-ih/z)/2\':fps={fps}:d={frames}'
     elif direction == PanDirection.ZOOM_OUT:
-        return f"scale={zoom_factor}*iw:-1,zoompan=z='1+{pan_distance}*(1-(n/{frames}))':x='(iw-iw/z)/2':y='(ih-ih/z)/2':fps={fps}:d={frames}"
+        return f'scale={zoom_factor}*iw:-1,zoompan=z=\'1+{pan_distance}*(1-n/{frames})\':x=\'(iw-iw/z)/2\':y=\'(ih-ih/z)/2\':fps={fps}:d={frames}'
     else:
-        return f"scale={zoom_factor}*iw:-1,crop=iw/{zoom_factor}:ih/{zoom_factor}"
+        return f'scale={zoom_factor}*iw:-1,crop=iw/{zoom_factor}:ih/{zoom_factor}'
 
 
 def validate_inputs(video_paths):
@@ -204,24 +204,102 @@ def validate_inputs(video_paths):
         
     return categorized_videos
 
-def extract_interesting_segments(video_path, num_segments=10, min_segment_duration=2):
-    """Extract timestamps of potentially interesting segments from a video."""
+def analyze_audio_levels(video_path, segment_duration=3):
+    """
+    Analyze audio levels in the video to find high-energy segments.
+    Returns a list of timestamps where the audio energy is highest.
+    """
+    # Create a temporary file for audio data
+    with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as temp_file:
+        audio_data_file = temp_file.name
+
+    try:
+        # Extract audio levels using FFmpeg's volumedetect filter
+        cmd = [
+            'ffmpeg',
+            '-i', video_path,
+            '-af', f'astats=metadata=1:reset={segment_duration},ametadata=print:key=lavfi.astats.Overall.RMS_level',
+            '-f', 'null',
+            '-'
+        ]
+        
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        
+        # Parse the output to find timestamps with high audio levels
+        audio_levels = []
+        current_time = 0
+        
+        for line in result.stderr.split('\n'):
+            if 'RMS_level' in line:
+                try:
+                    level = float(line.split('=')[1])
+                    audio_levels.append((current_time, level))
+                    current_time += segment_duration
+                except (ValueError, IndexError):
+                    continue
+        
+        # Sort segments by audio level (highest to lowest)
+        audio_levels.sort(key=lambda x: x[1], reverse=True)
+        
+        # Return timestamps of the highest energy segments
+        return [timestamp for timestamp, _ in audio_levels[:20]]  # Return top 20 segments
+        
+    except Exception as e:
+        print(f"Warning: Audio analysis failed: {e}")
+        return []
+
+def extract_interesting_segments(video_path, num_segments=10, target_duration=3):
+    """
+    Extract timestamps of potentially interesting segments from a video.
+    
+    Args:
+        video_path: Path to the video file
+        num_segments: Number of segments to extract
+        target_duration: Target duration for each segment in seconds
+    """
     duration = get_video_duration(video_path)
     
-    # For simplicity, we'll just divide the video into equal parts
-    # In a real implementation, you might use scene detection or audio level analysis
-    segment_duration = max(min_segment_duration, duration / (num_segments * 2))
-    possible_start_times = [i * (duration / num_segments) for i in range(num_segments)]
+    # Get high-energy segments based on audio analysis
+    high_energy_timestamps = analyze_audio_levels(video_path)
     
     segments = []
-    for start_time in possible_start_times:
-        # Ensure we don't go beyond the video duration
-        if start_time + segment_duration <= duration:
-            segments.append((start_time, segment_duration))
+    
+    # First, add segments from high-energy parts
+    for timestamp in high_energy_timestamps:
+        if timestamp + target_duration <= duration:
+            segments.append((timestamp, target_duration))
+    
+    # If we need more segments, add some from regular intervals
+    if len(segments) < num_segments:
+        # Calculate how many more segments we need
+        remaining_segments = num_segments - len(segments)
+        interval = (duration - target_duration) / (remaining_segments + 1)
+        
+        for i in range(remaining_segments):
+            start_time = (i + 1) * interval
+            if start_time + target_duration <= duration:
+                # Check if this segment overlaps with existing ones
+                overlaps = any(abs(start_time - s[0]) < target_duration for s in segments)
+                if not overlaps:
+                    segments.append((start_time, target_duration))
     
     # Shuffle to get a random selection
     random.shuffle(segments)
-    return segments
+    
+    # Limit to requested number of segments
+    return segments[:num_segments]
+
+def get_segment_range(segment_count):
+    """Get min and max segments based on segment count setting."""
+    if segment_count == "few":
+        return random.randint(3, 7)
+    elif segment_count == "some":
+        return random.randint(6, 12)
+    elif segment_count == "lots":
+        return random.randint(10, 25)
+    else:
+        # Default to "some" if invalid value provided
+        return random.randint(6, 12)
 
 def test_filter_string(filter_string):
     """
@@ -285,14 +363,65 @@ def generate_and_test_filters():
     Generate and test multiple filter strings with various parameters
     to find ones that work reliably with FFmpeg.
     """
-    test_duration = 6.0
     test_results = []
+
+    # Base components for filter strings
+    base_scale_h = 'scale=2*iw:-1'
+    base_scale_v = 'scale=-1:2*ih'
+    base_crop_h = 'crop=iw/2:ih'
+    base_crop_v = 'crop=iw:ih/2'
+    fps_str = 'fps=30'
+    duration_str = 'd=30'
 
     # Test all pan directions with basic parameters
     for direction in list(PanDirection):
-        # Try ultra simple version first
-        filter_string = generate_ultra_simple_pan_filter(
-            direction, test_duration, pan_speed=1.0, pan_distance=0.2)
+        # Try ultra simple version first with basic expressions
+        if direction == PanDirection.LEFT_TO_RIGHT:
+            filter_parts = [
+                base_scale_h,
+                base_crop_h,
+                'select=1',
+                'zoompan=x=0:y=0:z=1:fps=30:d=90'
+            ]
+            filter_string = ','.join(filter_parts)
+        elif direction == PanDirection.RIGHT_TO_LEFT:
+            filter_parts = [
+                base_scale_h,
+                base_crop_h,
+                'select=1',
+                'zoompan=x=iw/2:y=0:z=1:fps=30:d=90'
+            ]
+            filter_string = ','.join(filter_parts)
+        elif direction == PanDirection.TOP_TO_BOTTOM:
+            filter_parts = [
+                base_scale_v,
+                base_crop_v,
+                'select=1',
+                'zoompan=x=0:y=0:z=1:fps=30:d=90'
+            ]
+            filter_string = ','.join(filter_parts)
+        elif direction == PanDirection.BOTTOM_TO_TOP:
+            filter_parts = [
+                base_scale_v,
+                base_crop_v,
+                'select=1',
+                'zoompan=x=0:y=ih/2:z=1:fps=30:d=90'
+            ]
+            filter_string = ','.join(filter_parts)
+        elif direction == PanDirection.ZOOM_IN:
+            filter_parts = [
+                'select=1',
+                'zoompan=x=iw/4:y=ih/4:z=2:fps=30:d=90'
+            ]
+            filter_string = ','.join(filter_parts)
+        elif direction == PanDirection.ZOOM_OUT:
+            filter_parts = [
+                'select=1',
+                'zoompan=x=0:y=0:z=0.5:fps=30:d=90'
+            ]
+            filter_string = ','.join(filter_parts)
+        else:
+            filter_string = 'scale=1.2*iw:-1,crop=iw/1.2:ih/1.2'
 
         success = test_filter_string(filter_string)
         test_results.append({
@@ -302,21 +431,21 @@ def generate_and_test_filters():
         })
 
         if not success:
-            # Try even simpler version with corrected parentheses and double quotes
+            # Try even simpler version with minimal expressions
             if direction == PanDirection.LEFT_TO_RIGHT:
-                simpler_filter = 'scale=1.2*iw:-1,zoompan=z=1:x="(0.2*iw)*(n/180)":y=0:fps=30:d=181'
+                simpler_filter = f'{base_scale_h},{base_crop_h}'
             elif direction == PanDirection.RIGHT_TO_LEFT:
-                simpler_filter = 'scale=1.2*iw:-1,zoompan=z=1:x="(0.2*iw)*(1-(n/180))":y=0:fps=30:d=181'
+                simpler_filter = f'{base_scale_h},{base_crop_h}'
             elif direction == PanDirection.TOP_TO_BOTTOM:
-                simpler_filter = 'scale=1.2*iw:-1,zoompan=z=1:x=0:y="(0.2*ih)*(n/180)":fps=30:d=181'
+                simpler_filter = f'{base_scale_v},{base_crop_v}'
             elif direction == PanDirection.BOTTOM_TO_TOP:
-                simpler_filter = 'scale=1.2*iw:-1,zoompan=z=1:x=0:y="(0.2*ih)*(1-(n/180))":fps=30:d=181'
+                simpler_filter = f'{base_scale_v},{base_crop_v}'
             elif direction == PanDirection.ZOOM_IN:
-                simpler_filter = 'scale=1.2*iw:-1,zoompan=z="1+0.2*(n/180)":x="(iw-iw/z)/2":y="(ih-ih/z)/2":fps=30:d=181'
+                simpler_filter = 'scale=2*iw:-1,crop=iw/2:ih/2'
             elif direction == PanDirection.ZOOM_OUT:
-                simpler_filter = 'scale=1.2*iw:-1,zoompan=z="1+0.2*(1-(n/180))":x="(iw-iw/z)/2":y="(ih-ih/z)/2":fps=30:d=181'
+                simpler_filter = 'scale=2*iw:-1,crop=iw/2:ih/2'
             else:
-                simpler_filter = "scale=1.2*iw:-1,crop=iw/1.2:ih/1.2"
+                simpler_filter = 'scale=1.2*iw:-1,crop=iw/1.2:ih/1.2'
 
             retry_success = test_filter_string(simpler_filter)
             test_results.append({
@@ -339,218 +468,401 @@ def generate_and_test_filters():
 def create_reliable_filter(video_path, target_aspect, direction, duration):
     """
     Create a reliable filter string that works with all FFmpeg versions
-    and avoids complex expressions that could cause parsing errors.
-
-    Args:
-        video_path: Path to the input video
-        target_aspect: Target aspect ratio (instagram_reel, tiktok, instagram_square)
-        direction: PanDirection enum specifying the panning direction
-        duration: Duration of the segment in seconds
-
-    Returns:
-        A filter string that can be passed to FFmpeg
+    using the simplest possible expressions.
     """
-    # Get the basic scaling/cropping filter for the target aspect ratio
-    basic_scaling = determine_scaling_filter(video_path, target_aspect)
+    # Get target dimensions from aspect ratio
+    target_width = ASPECT_RATIOS[target_aspect]["width"]
+    target_height = ASPECT_RATIOS[target_aspect]["height"]
 
     # For short segments, skip panning to avoid issues
     if duration < 2.0:
-        return basic_scaling
+        return determine_scaling_filter(video_path, target_aspect)
 
-    # Calculate frames and basic parameters
-    fps = 30
-    frames = int(duration * fps)
-    pan_distance = 0.2  # Keep this fairly small to avoid extreme panning
-    zoom_factor = 1.2   # Fixed zoom factor for simplicity
+    # Base components for filter strings
+    fps_str = 'fps=30'
+    duration_frames = int(duration * 30)
+    duration_str = f'd={duration_frames}'
 
-    # Generate filter based on direction - using extremely simple expressions with double quotes
+    # Generate filter based on direction using simple expressions
     if direction == PanDirection.LEFT_TO_RIGHT:
-        pan_filter = f"scale={zoom_factor}*iw:-1,zoompan=z=1:x=\"(0.2*iw)*(n/{frames})\":y=0:fps={fps}:d={frames}"
+        filter_parts = [
+            'scale=2*iw:-1',  # Double width, maintain aspect
+            f'crop=iw/2:ih',  # Crop to original width
+            'select=1',
+            f'zoompan=x=0:y=0:z=1:{fps_str}:{duration_str}',
+            f'scale={target_width}:{target_height}'  # Final scaling to target size
+        ]
+        pan_filter = ','.join(filter_parts)
     elif direction == PanDirection.RIGHT_TO_LEFT:
-        pan_filter = f"scale={zoom_factor}*iw:-1,zoompan=z=1:x=\"(0.2*iw)*(1-(n/{frames}))\":y=0:fps={fps}:d={frames}"
+        filter_parts = [
+            'scale=2*iw:-1',
+            f'crop=iw/2:ih',
+            'select=1',
+            f'zoompan=x=iw/2:y=0:z=1:{fps_str}:{duration_str}',
+            f'scale={target_width}:{target_height}'
+        ]
+        pan_filter = ','.join(filter_parts)
     elif direction == PanDirection.TOP_TO_BOTTOM:
-        pan_filter = f"scale={zoom_factor}*iw:-1,zoompan=z=1:x=0:y=\"(0.2*ih)*(n/{frames})\":fps={fps}:d={frames}"
+        filter_parts = [
+            'scale=-1:2*ih',  # Double height, maintain aspect
+            f'crop=iw:ih/2',  # Crop to original height
+            'select=1',
+            f'zoompan=x=0:y=0:z=1:{fps_str}:{duration_str}',
+            f'scale={target_width}:{target_height}'
+        ]
+        pan_filter = ','.join(filter_parts)
     elif direction == PanDirection.BOTTOM_TO_TOP:
-        pan_filter = f"scale={zoom_factor}*iw:-1,zoompan=z=1:x=0:y=\"(0.2*ih)*(1-(n/{frames}))\":fps={fps}:d={frames}"
+        filter_parts = [
+            'scale=-1:2*ih',
+            f'crop=iw:ih/2',
+            'select=1',
+            f'zoompan=x=0:y=ih/2:z=1:{fps_str}:{duration_str}',
+            f'scale={target_width}:{target_height}'
+        ]
+        pan_filter = ','.join(filter_parts)
     elif direction == PanDirection.ZOOM_IN:
-        pan_filter = f"scale={zoom_factor}*iw:-1,zoompan=z=\"1+0.2*(n/{frames})\":x=\"(iw-iw/z)/2\":y=\"(ih-ih/z)/2\":fps={fps}:d={frames}"
+        filter_parts = [
+            'select=1',
+            f'zoompan=x=iw/4:y=ih/4:z=2:{fps_str}:{duration_str}',
+            f'scale={target_width}:{target_height}'
+        ]
+        pan_filter = ','.join(filter_parts)
     elif direction == PanDirection.ZOOM_OUT:
-        pan_filter = f"scale={zoom_factor}*iw:-1,zoompan=z=\"1+0.2*(1-(n/{frames}))\":x=\"(iw-iw/z)/2\":y=\"(ih-ih/z)/2\":fps={fps}:d={frames}"
+        filter_parts = [
+            'select=1',
+            f'zoompan=x=0:y=0:z=0.5:{fps_str}:{duration_str}',
+            f'scale={target_width}:{target_height}'
+        ]
+        pan_filter = ','.join(filter_parts)
     else:
-        # Default to no panning
-        pan_filter = f"scale={zoom_factor}*iw:-1,crop=iw/{zoom_factor}:ih/{zoom_factor}"
+        # Default to no panning, just scale to target size
+        pan_filter = f'scale={target_width}:{target_height}'
 
-    # Add the basic scaling/cropping after the pan effect
-    # The comma here chains the filters
-    full_filter = pan_filter + "," + basic_scaling.split(',', 1)[1] if ',' in basic_scaling else basic_scaling
+    return pan_filter
 
-    return full_filter
-
-def create_video_montage(video_paths, output_duration, output_path, target_aspect="instagram_reel", 
-                         enable_panning=True, pan_strategy="random", pan_speed=1.0, 
-                         pan_distance=0.2, easing_type=EasingType.EASE_IN_OUT):
+def wrap_text(text, max_chars_per_line):
     """
-    Create a montage video from input videos with specified duration and aspect ratio.
-    
-    Args:
-        video_paths: List of input video paths
-        output_duration: Desired output duration in seconds
-        output_path: Path to save the output video
-        target_aspect: Target aspect ratio (instagram_reel, tiktok, instagram_square)
-        enable_panning: Whether to enable panning effects
-        pan_strategy: How to determine pan direction ("random", "sequence", or specific PanDirection)
-        pan_speed: Speed factor for panning (higher = faster)
-        pan_distance: The percentage of the frame to pan (0.0-1.0)
-        easing_type: The easing function to use for the panning
+    Wrap text into multiple lines, trying to break at spaces when possible.
     """
-    segments_to_use = []
+    words = text.split()
+    lines = []
+    current_line = []
+    current_length = 0
     
-    # Calculate how many segments we need based on desired output duration
-    # Let's aim for segments of about 3-5 seconds
-    avg_segment_duration = 4
-    num_segments_needed = max(3, int(output_duration / avg_segment_duration))
-    
-    # Extract segments from each video
-    for video_path in video_paths:
-        duration = get_video_duration(video_path)
-        # More segments from longer videos
-        num_segments = max(3, int((duration / 60) * 5))
-        segments = extract_interesting_segments(video_path, num_segments)
-        
-        for start_time, segment_duration in segments:
-            segments_to_use.append((video_path, start_time, segment_duration))
-    
-    # Shuffle and limit to what we need
-    random.shuffle(segments_to_use)
-    if len(segments_to_use) > num_segments_needed:
-        segments_to_use = segments_to_use[:num_segments_needed]
-    
-    # Create temporary directory for segment files
-    with tempfile.TemporaryDirectory() as temp_dir:
-        print(f"Using temporary directory: {temp_dir}")
-        segment_files = []
-        
-        # Define pan directions based on strategy
-        pan_directions = list(PanDirection)
-        if pan_strategy == "sequence" and enable_panning:
-            # Use directions in sequence
-            current_pan_idx = 0
-        
-        # Extract segments to temporary files
-        for i, (video_path, start_time, segment_duration) in enumerate(segments_to_use):
-            segment_file = os.path.join(temp_dir, f"segment_{i:03d}.mp4")
-            
-            # Determine scaling filter for this video
-            basic_scaling_filter = determine_scaling_filter(video_path, target_aspect)
-            
-            # If panning is enabled, add the pan filter
-            if enable_panning:
-                if pan_strategy == "random":
-                    # Use a random direction
-                    pan_direction = random.choice(pan_directions)
-                elif pan_strategy == "sequence":
-                    # Use directions in sequence
-                    pan_direction = pan_directions[current_pan_idx]
-                    current_pan_idx = (current_pan_idx + 1) % len(pan_directions)
-                elif isinstance(pan_strategy, PanDirection):
-                    # Use the specified direction
-                    pan_direction = pan_strategy
-                else:
-                    # Default to random
-                    pan_direction = random.choice(pan_directions)
-                
-                try:
-                    # Use our simplified filter to avoid expression issues
-                    # pan_filter = generate_ultra_simple_pan_filter(pan_direction, segment_duration, 
-                    #                                     pan_speed, pan_distance, easing_type)
-                    # filter_string = pan_filter  # Just use the complete pan filter
-                    
-                        # If panning is enabled, use the reliable filter generator
-                    if enable_panning:
-                        if pan_strategy == "random":
-                            pan_direction = random.choice(pan_directions)
-                        elif pan_strategy == "sequence":
-                            pan_direction = pan_directions[current_pan_idx]
-                            current_pan_idx = (current_pan_idx + 1) % len(pan_directions)
-                        elif isinstance(pan_strategy, PanDirection):
-                            pan_direction = pan_strategy
-                        else:
-                            pan_direction = random.choice(pan_directions)
-                        
-                        # Use the new reliable filter generator
-                        filter_string = create_reliable_filter(video_path, target_aspect, pan_direction, segment_duration)
-                    else:
-                        # No panning, just use the basic scaling
-                        filter_string = basic_scaling_filter
-                except Exception as e:
-                    print(f"Warning: Failed to generate panning filter: {e}")
-                    print("Falling back to static scaling")
-                    filter_string = basic_scaling_filter
+    for word in words:
+        # Check if adding this word would exceed max length
+        if current_length + len(word) + (1 if current_length > 0 else 0) <= max_chars_per_line:
+            current_line.append(word)
+            current_length += len(word) + (1 if current_length > 0 else 0)
+        else:
+            # If current line is empty but word is too long, force split the word
+            if not current_line and len(word) > max_chars_per_line:
+                while word:
+                    lines.append(word[:max_chars_per_line])
+                    word = word[max_chars_per_line:]
             else:
-                # No panning, just use the basic scaling
-                filter_string = basic_scaling_filter
-            
-            # Extract segment using FFmpeg with proper scaling/cropping
-            cmd = [
-                'ffmpeg',
-                '-y',  # Overwrite output files
-                '-i', video_path,
-                '-ss', str(start_time),
-                '-t', str(segment_duration),
-                '-vf', filter_string,
-                '-c:v', 'libx264',
-                '-c:a', 'aac',
-                segment_file
-            ]
-            print(f"Creating segment {i+1}/{len(segments_to_use)}: {segment_file}")
-            print(f"Filter string: {filter_string}")  # Debug output
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-            
-            # Check if segment creation was successful
-            if result.returncode != 0:
-                print(f"Error creating segment from {video_path}:")
-                print(result.stderr)
-                # Fallback to basic scaling without pan for problematic files
-                try:
-                    cmd = [
-                        'ffmpeg',
-                        '-y',
-                        '-i', video_path,
-                        '-ss', str(start_time),
-                        '-t', str(segment_duration),
-                        '-vf', basic_scaling_filter,
-                        '-c:v', 'libx264',
-                        '-c:a', 'aac',
-                        segment_file
-                    ]
-                    print(f"Retrying with basic scaling: {basic_scaling_filter}")
-                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                except Exception as fallback_e:
-                    print(f"Even fallback failed: {fallback_e}")
-                    continue
-                
-            if os.path.exists(segment_file) and os.path.getsize(segment_file) > 0:
-                segment_files.append(segment_file)
-            else:
-                print(f"Warning: Segment file not created or empty: {segment_file}")
-                
-        if not segment_files:
-            raise Exception("No valid segments were created. Cannot create montage.")
+                # Add current line and start new one
+                lines.append(' '.join(current_line))
+                current_line = [word]
+                current_length = len(word)
+    
+    # Add the last line if there is one
+    if current_line:
+        lines.append(' '.join(current_line))
+    
+    return lines
+
+def calculate_text_layout(text, target_aspect, base_size, margin_percent=20, min_font_size=36):
+    """
+    Calculate appropriate font size and line wrapping for text.
+    Returns tuple of (font_size, wrapped_text, line_spacing).
+    """
+    # Get target dimensions
+    target_width = ASPECT_RATIOS[target_aspect]["width"]
+    
+    # Calculate available width (accounting for margins)
+    margin_width = int(target_width * (margin_percent / 100))
+    available_width = target_width - (2 * margin_width)
+    
+    # Estimate max characters per line at base font size
+    # FFmpeg uses approximately 0.6 * fontsize for each character width
+    chars_per_line = int(available_width / (base_size * 0.6))
+    
+    # Try different font sizes until we find one that works
+    current_size = base_size
+    while current_size >= min_font_size:
+        chars_this_size = int(available_width / (current_size * 0.6))
+        wrapped_lines = wrap_text(text, chars_this_size)
         
+        # If we have 3 or fewer lines, this size works
+        if len(wrapped_lines) <= 3:
+            line_spacing = current_size * 1.2  # 120% of font size for line spacing
+            return current_size, wrapped_lines, line_spacing
+        
+        # Reduce font size and try again
+        current_size -= 4
+    
+    # If we get here, use minimum size and force wrap
+    wrapped_lines = wrap_text(text, int(available_width / (min_font_size * 0.6)))
+    line_spacing = min_font_size * 1.2
+    return min_font_size, wrapped_lines[:3], line_spacing  # Limit to 3 lines maximum
+
+def create_text_overlay_filter(video_duration, text_array=None, display_duration=5, gap_duration=3, style="default", target_aspect="vertical_portrait"):
+    """
+    Create FFmpeg filter complex string for text overlays with enhanced effects.
+    Now includes margin handling, dynamic font sizing, and multi-line text support.
+    """
+    if text_array is None:
+        text_array = ['@Suite.E.Studios']
+    
+    fade_duration = 2  # Fixed 2-second fade in/out
+    margin_percent = 20  # 20% total margins (10% each side)
+    
+    # Get target dimensions
+    target_width = ASPECT_RATIOS[target_aspect]["width"]
+    target_height = ASPECT_RATIOS[target_aspect]["height"]
+    
+    # Calculate margins
+    h_margin = int(target_width * (margin_percent / 200))
+    
+    # Style-specific base font sizes (reduced by 20%)
+    if style == "pulse":
+        base_fontsize = 58  # was 72
+        y_pos_base = "h*0.85"
+        min_font_size = 29  # was 36
+    elif style == "concert":
+        base_fontsize = 77  # was 96
+        y_pos_base = "h*0.5"
+        min_font_size = 38  # was 48
+    elif style == "promo":
+        base_fontsize = 38  # was 48
+        y_pos_base = "h*0.9"
+        min_font_size = 29  # was 36
+    else:
+        base_fontsize = 58  # was 72
+        y_pos_base = "h*0.85"
+        min_font_size = 29  # was 36
+    
+    filter_parts = []
+    current_time = 0
+    
+    for text in text_array:
+        # Skip if we've exceeded video duration
+        if current_time >= video_duration:
+            break
+        
+        # Calculate timing
+        start_time = current_time
+        full_opacity_start = start_time + fade_duration
+        full_opacity_end = min(full_opacity_start + display_duration, video_duration)
+        end_time = min(full_opacity_end + fade_duration, video_duration)
+        
+        # Calculate font size and wrap text
+        font_size, wrapped_lines, line_spacing = calculate_text_layout(
+            text, target_aspect, base_fontsize, margin_percent, min_font_size
+        )
+        
+        # Calculate vertical position adjustment for multiple lines
+        total_height = len(wrapped_lines) * line_spacing
+        if style == "concert":
+            y_start = f"(h-{total_height})/2"  # Center all lines vertically
+        else:
+            # Adjust base position up by half the height of additional lines
+            y_start = f"{y_pos_base}-{(len(wrapped_lines)-1)*line_spacing}/2"
+        
+        # Create a filter for each line of text
+        for i, line in enumerate(wrapped_lines):
+            # Properly escape the text for FFmpeg
+            escaped_text = line.replace("'", "'\\\\''")  # Escape single quotes
+            escaped_text = escaped_text.encode('unicode-escape').decode()  # Handle emoji and special chars
+            
+            # Calculate y position for this line
+            y_pos = f"{y_start}+{i*line_spacing}"
+            
+            # For pulsing effect, adjust the size variation based on the calculated font size
+            if style == "pulse":
+                size_variation = font_size * 0.1  # 10% size variation
+                size_expr = f"{font_size}+{size_variation}*sin(2*PI*t/1.5)"
+            else:
+                size_expr = str(font_size)
+            
+            # Build the filter string with proper escaping
+            filter_parts.append(
+                f"drawtext="
+                f"text='{escaped_text}':"
+                f"fontsize={size_expr}:"
+                f"fontcolor=white:"
+                f"fontfile=Arial:"
+                f"borderw=3:"
+                f"bordercolor=black:"
+                f"x=if(gte(tw\\,{target_width-2*h_margin})\\,{h_margin}\\,max({h_margin}\\,(w-tw)/2)):"
+                f"y={y_pos}:"
+                f"enable=between(t\\,{start_time}\\,{end_time}):"
+                f"alpha=if(lt(t\\,{full_opacity_start})\\,(t-{start_time})/{fade_duration}\\,"
+                f"if(gt(t\\,{full_opacity_end})\\,1-(t-{full_opacity_end})/{fade_duration}\\,1))"
+            )
+            
+            # Add glow effect for concert style
+            if style == "concert":
+                filter_parts[-1] += ":shadowcolor=black@0.5:shadowx=2:shadowy=2"
+        
+        # Update time for next text
+        current_time = end_time + gap_duration
+    
+    # Join all filter parts with commas
+    if not filter_parts:
+        return ""
+    
+    return ','.join(filter_parts)
+
+def detect_hardware_encoders():
+    """
+    Detect available hardware encoders on the system.
+    Returns a tuple of (video_encoder, device, thread_count) or (None, None, None) if no hardware acceleration is available.
+    """
+    thread_count = os.cpu_count() or 4
+    
+    # Check for macOS (Apple Silicon or Intel)
+    if sys.platform == "darwin":
         try:
-            # Try the concat method first
-            temp_output = create_concat_file(segment_files, temp_dir)
-            if temp_output:
-                # Add text overlay "@Suite.E.Studios"
-                create_final_output(temp_output, output_path, output_duration, target_aspect)
-            else:
-                # If concat fails, fall back to direct encoding
-                fallback_create_output(segment_files, output_path, output_duration, target_aspect)
-        except Exception as e:
-            print(f"Error during montage creation: {e}")
-            print("Trying direct encoding fallback method...")
-            fallback_create_output(segment_files, output_path, output_duration, target_aspect)
-            
+            # Check for Apple Silicon (M1/M2) VideoToolbox
+            result = subprocess.run(['sysctl', 'machdep.cpu.brand_string'], 
+                                 capture_output=True, text=True)
+            if 'Apple' in result.stdout:
+                # M1/M2 optimization
+                return 'h264_videotoolbox', None, thread_count
+            # For Intel Macs with VideoToolbox
+            return 'h264_videotoolbox', None, thread_count
+        except:
+            return None, None, thread_count
+    
+    # Check for NVIDIA GPU
+    try:
+        result = subprocess.run(['nvidia-smi'], capture_output=True, text=True)
+        if result.returncode == 0:
+            # Get GPU memory info
+            memory_info = subprocess.run(
+                ['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits'],
+                capture_output=True, text=True
+            )
+            gpu_memory = int(memory_info.stdout.strip())
+            # Enable parallel processing if GPU has enough memory (>8GB)
+            parallel_streams = min(3, gpu_memory // 4000) if gpu_memory > 8000 else 1
+            return 'h264_nvenc', None, parallel_streams
+    except:
+        pass
+    
+    return None, None, thread_count
+
+def create_ffmpeg_command(input_file, output_file, vf_filter, duration=None, hw_encoder=None, thread_count=4):
+    """
+    Create an FFmpeg command with hardware acceleration if available.
+    """
+    cmd = ['ffmpeg', '-y']
+    
+    # System-specific optimizations
+    if hw_encoder == 'h264_videotoolbox':
+        # M1/M2 optimizations
+        cmd.extend([
+            '-threads', str(thread_count),
+            '-filter_threads', str(thread_count),
+            '-filter_complex_threads', str(thread_count)
+        ])
+    elif hw_encoder == 'h264_nvenc':
+        # NVIDIA optimizations
+        cmd.extend([
+            '-threads', str(thread_count),
+            '-extra_hw_frames', '3',  # Buffer for hardware frames
+            '-gpu_init_delay', '0.1'  # Faster GPU initialization
+        ])
+    else:
+        # CPU optimizations
+        cmd.extend([
+            '-threads', str(thread_count),
+            '-filter_threads', str(thread_count),
+            '-filter_complex_threads', str(thread_count)
+        ])
+    
+    # Input file
+    if hw_encoder in ['h264_qsv', 'h264_nvenc']:
+        cmd.extend(['-hwaccel', 'auto'])
+    cmd.extend(['-i', input_file])
+    
+    # Add duration limit if specified
+    if duration:
+        cmd.extend(['-t', str(duration)])
+    
+    # Video filter
+    cmd.extend(['-vf', vf_filter])
+    
+    # Video codec settings
+    if hw_encoder:
+        cmd.extend(['-c:v', hw_encoder])
+        
+        if hw_encoder == 'h264_nvenc':
+            cmd.extend([
+                '-preset', 'p4',          # Highest quality preset
+                '-rc', 'vbr',            # Variable bitrate
+                '-cq', '20',             # Quality-based VBR
+                '-b:v', '10M',           # Higher bitrate for better quality
+                '-maxrate', '15M',       # Maximum bitrate
+                '-bufsize', '15M',       # Buffer size
+                '-spatial-aq', '1',      # Spatial adaptive quantization
+                '-temporal-aq', '1'      # Temporal adaptive quantization
+            ])
+        elif hw_encoder == 'h264_videotoolbox':
+            cmd.extend([
+                '-b:v', '10M',           # Higher bitrate for M2 Max
+                '-maxrate', '15M',       # Maximum bitrate
+                '-bufsize', '15M',       # Buffer size
+                '-tag:v', 'avc1',        # Ensure compatibility
+                '-movflags', '+faststart' # Optimize for streaming
+            ])
+    else:
+        # Fallback to CPU encoding with good quality settings
+        cmd.extend([
+            '-c:v', 'libx264',
+            '-preset', 'fast',
+            '-crf', '23'
+        ])
+    
+    # Audio codec
+    cmd.extend(['-c:a', 'aac', '-b:a', '192k'])
+    
+    # Output file
+    cmd.append(output_file)
+    
+    return cmd
+
+def process_intro_segment(intro_video_path, target_aspect, temp_dir):
+    """Process the intro video segment with proper scaling and formatting."""
+    if not intro_video_path or not os.path.exists(intro_video_path):
+        return None
+        
+    intro_segment_file = os.path.join(temp_dir, "intro_segment.mp4")
+    
+    # Get the scaling filter for the intro video
+    scaling_filter = determine_scaling_filter(intro_video_path, target_aspect)
+    
+    # Detect hardware encoder
+    hw_encoder, _, _ = detect_hardware_encoders()
+    
+    # Create FFmpeg command with hardware acceleration
+    cmd = create_ffmpeg_command(
+        input_file=intro_video_path,
+        output_file=intro_segment_file,
+        vf_filter=scaling_filter,
+        hw_encoder=hw_encoder
+    )
+    
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    
+    if result.returncode != 0 or not os.path.exists(intro_segment_file):
+        print(f"Warning: Failed to process intro video: {result.stderr}")
+        return None
+        
+    return intro_segment_file
+
 def create_concat_file(segment_files, temp_dir):
     """Create a concatenated video file from segment files."""
     # Create a file with list of segments for FFmpeg concat
@@ -567,7 +879,9 @@ def create_concat_file(segment_files, temp_dir):
         '-f', 'concat',
         '-safe', '0',
         '-i', concat_file,
-        '-c', 'copy',
+        '-c:v', 'copy',  # Copy video stream
+        '-c:a', 'aac',   # Convert audio to AAC
+        '-b:a', '192k',  # Set audio bitrate
         temp_output
     ]
     print(f"Creating intermediate file: {temp_output}")
@@ -590,39 +904,6 @@ def create_concat_file(segment_files, temp_dir):
         return None
     
     return temp_output
-
-def create_final_output(temp_output, output_path, video_duration, target_aspect):
-    """Create the final output with text overlay."""
-    # Add text overlay "@Suite.E.Studios"
-    # We'll add the text for short durations at different intervals
-    text_filter = create_text_overlay_filter(video_duration)
-    
-    # Set target dimensions
-    target_width = ASPECT_RATIOS[target_aspect]["width"]
-    target_height = ASPECT_RATIOS[target_aspect]["height"]
-    
-    # Final FFmpeg command to create the output with text overlay
-    cmd = [
-        'ffmpeg',
-        '-y',
-        '-i', temp_output,
-        '-vf', text_filter,
-        '-c:a', 'copy',
-        '-s', f"{target_width}x{target_height}",
-        output_path
-    ]
-    print(f"Executing final FFmpeg command to create: {output_path}")
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    
-    # Check if the command was successful
-    if result.returncode != 0:
-        print("FFmpeg Error:")
-        print(result.stderr)
-        raise Exception(f"FFmpeg failed with return code {result.returncode}")
-        
-    # Verify the file was created
-    if not os.path.exists(output_path):
-        raise Exception(f"FFmpeg didn't report an error, but the output file wasn't created at: {output_path}")
 
 def fallback_create_output(segment_files, output_path, video_duration, target_aspect):
     """Fallback method: Create output video by directly encoding all segments into one file."""
@@ -669,32 +950,6 @@ def fallback_create_output(segment_files, output_path, video_duration, target_as
     
     if not os.path.exists(output_path):
         raise Exception("Fallback method didn't create output file")
-
-def create_text_overlay_filter(video_duration):
-    """Create FFmpeg filter complex string for text overlays."""
-    # We'll show text 3-5 times depending on video length
-    num_displays = max(3, min(5, int(video_duration / 20)))
-    
-    # Calculate display intervals and durations
-    interval = video_duration / (num_displays + 1)
-    display_duration = 3  # 3 seconds per display
-    
-    # Create the filter complex string
-    filter_parts = []
-    for i in range(num_displays):
-        start_time = (i + 1) * interval
-        end_time = start_time + display_duration
-        
-        # Text appears and fades out
-        # For vertical videos, position the text in the lower third
-        filter_part = (
-            f"drawtext=text='@Suite.E.Studios':fontcolor=white:fontsize=36:"
-            f"borderw=2:bordercolor=black:x=(w-text_w)/2:y=h*0.85:"
-            f"enable='between(t,{start_time},{end_time})':alpha='if(lt(t,{start_time+0.5}),(t-{start_time})*2,if(gt(t,{end_time-0.5}),1-(t-{end_time-0.5})*2,1))'"
-        )
-        filter_parts.append(filter_part)
-    
-    return ','.join(filter_parts)
 
 def parse_input_string(input_string):
     """Parse input string to extract video name, format, and input videos."""
@@ -787,17 +1042,214 @@ def create_video_segment(video_path, start_time, segment_duration, output_file, 
         print(f"Warning: Segment file not created or empty: {output_file}")
         return False
     
+def create_video_montage(video_paths, output_duration, output_path, target_aspect="vertical_portrait", 
+                         enable_panning=True, pan_strategy="random", pan_speed=1.0, 
+                         pan_distance=0.2, easing_type=EasingType.EASE_IN_OUT, segment_count="some",
+                         text_array=None, text_display_duration=5, text_gap_duration=3,
+                         text_style="default", intro_video=None, intro_audio=None,
+                         intro_audio_duration=5.0, intro_audio_volume=2.0):
+    """Create a montage video with hardware acceleration if available."""
+    
+    # Detect available hardware encoder
+    hw_encoder, _, thread_count = detect_hardware_encoders()
+    if hw_encoder:
+        print(f"Using hardware encoder: {hw_encoder} with {thread_count} threads")
+        if hw_encoder == 'h264_videotoolbox':
+            print("Optimized for Apple Silicon")
+        elif hw_encoder == 'h264_nvenc':
+            print("Optimized for NVIDIA GPU")
+    else:
+        print(f"Using CPU encoding (libx264) with {thread_count} threads")
+    
+    segments_to_use = []
+    
+    # Calculate number of segments based on segment_count setting
+    num_segments_needed = get_segment_range(segment_count)
+    print(f"Creating {num_segments_needed} segments...")
+    
+    # Calculate segment duration to match output duration
+    total_segments = num_segments_needed
+    if intro_video:
+        intro_duration = get_video_duration(intro_video)
+        remaining_duration = max(0, output_duration - intro_duration)
+        segment_duration = remaining_duration / num_segments_needed
+    else:
+        segment_duration = output_duration / num_segments_needed
+    
+    print(f"Each segment will be approximately {segment_duration:.2f} seconds")
+    
+    # Extract segments from each video
+    for video_path in video_paths:
+        duration = get_video_duration(video_path)
+        segments = extract_interesting_segments(video_path, num_segments_needed * 2, segment_duration)  # Get more segments than needed
+        
+        # Add segments with their timestamps
+        for start_time, seg_duration in segments:
+            segments_to_use.append((video_path, start_time, min(seg_duration, segment_duration)))
+    
+    # Shuffle and limit to what we need
+    random.shuffle(segments_to_use)
+    if len(segments_to_use) > num_segments_needed:
+        segments_to_use = segments_to_use[:num_segments_needed]
+    
+    # Create temporary directory for segment files
+    with tempfile.TemporaryDirectory() as temp_dir:
+        print(f"Using temporary directory: {temp_dir}")
+        segment_files = []
+        
+        # Process intro video if provided
+        intro_segment = None
+        if intro_video:
+            intro_segment = process_intro_segment(intro_video, target_aspect, temp_dir)
+            if intro_segment:
+                segment_files.append(intro_segment)
+                print(f"Added intro video segment: {get_video_duration(intro_segment):.2f} seconds")
+        
+        # Extract regular segments to temporary files
+        for i, (video_path, start_time, segment_duration) in enumerate(segments_to_use):
+            segment_file = os.path.join(temp_dir, f"segment_{i:03d}.mp4")
+            
+            # Get basic scaling filter
+            scaling_filter = determine_scaling_filter(video_path, target_aspect)
+            
+            # Add panning if enabled
+            if enable_panning:
+                try:
+                    if pan_strategy == "random":
+                        pan_direction = random.choice(list(PanDirection))
+                    elif pan_strategy == "sequence":
+                        pan_direction = list(PanDirection)[i % len(list(PanDirection))]
+                    elif isinstance(pan_strategy, PanDirection):
+                        pan_direction = pan_strategy
+                    else:
+                        pan_direction = random.choice(list(PanDirection))
+                    
+                    filter_string = create_reliable_filter(video_path, target_aspect, pan_direction, segment_duration)
+                except Exception as e:
+                    print(f"Warning: Failed to generate panning filter: {e}")
+                    filter_string = scaling_filter
+            else:
+                filter_string = scaling_filter
+            
+            # Create FFmpeg command with hardware acceleration
+            cmd = create_ffmpeg_command(
+                input_file=video_path,
+                output_file=segment_file,
+                vf_filter=filter_string,
+                duration=segment_duration,
+                hw_encoder=hw_encoder,
+                thread_count=thread_count
+            )
+            
+            print(f"Creating segment {i+1}/{len(segments_to_use)}: {segment_file}")
+            print(f"Duration: {segment_duration:.2f} seconds")
+            print(f"Filter: {filter_string}")
+            
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+            
+            if result.returncode == 0 and os.path.exists(segment_file) and os.path.getsize(segment_file) > 0:
+                actual_duration = get_video_duration(segment_file)
+                print(f"Segment created successfully. Duration: {actual_duration:.2f} seconds")
+                segment_files.append(segment_file)
+            else:
+                print(f"Warning: Failed to create segment: {result.stderr}")
+        
+        if not segment_files:
+            raise Exception("No valid segments were created. Cannot create montage.")
+        
+        try:
+            # Create concat file
+            temp_output = create_concat_file(segment_files, temp_dir)
+            
+            if temp_output:
+                # Add text overlay
+                text_filter = create_text_overlay_filter(
+                    video_duration=output_duration,
+                    text_array=text_array,
+                    display_duration=text_display_duration,
+                    gap_duration=text_gap_duration,
+                    style=text_style,
+                    target_aspect=target_aspect
+                )
+                
+                # Set target dimensions
+                target_width = ASPECT_RATIOS[target_aspect]["width"]
+                target_height = ASPECT_RATIOS[target_aspect]["height"]
+                
+                # Prepare final FFmpeg command
+                filter_complex = []
+                inputs = ['-i', temp_output]  # Main video input
+                
+                # Add intro audio if provided
+                if intro_audio and os.path.exists(intro_audio):
+                    inputs.extend(['-i', intro_audio])
+                    
+                    # Create complex filter for audio mixing
+                    filter_complex.extend([
+                        # Original audio with volume adjustment after intro
+                        f"[0:a]volume=enable='gte(t,{intro_audio_duration})':"
+                        f"volume='min(1,(t-{intro_audio_duration})/2)'[main_audio]",
+                        
+                        # Intro audio with fade out
+                        f"[1:a]volume={intro_audio_volume}:"
+                        f"enable='lte(t,{intro_audio_duration+2})':"
+                        f"volume='max(0,1-(t-{intro_audio_duration})/2)'[intro_audio]",
+                        
+                        # Mix both audio streams
+                        "[main_audio][intro_audio]amix=inputs=2:duration=longest[aout]"
+                    ])
+                
+                # Add video filters
+                if text_filter:
+                    filter_complex.append(f"[0:v]{text_filter}[vout]")
+                
+                # Build the final FFmpeg command
+                cmd = ['ffmpeg', '-y']
+                cmd.extend(inputs)
+                
+                if filter_complex:
+                    cmd.extend(['-filter_complex', ';'.join(filter_complex)])
+                    if text_filter:
+                        cmd.extend(['-map', '[vout]'])
+                    if intro_audio:
+                        cmd.extend(['-map', '[aout]'])
+                    else:
+                        cmd.extend(['-map', '0:a'])  # Map original audio if no intro audio
+                else:
+                    cmd.extend(['-map', '0:v', '-map', '0:a'])  # Map both video and audio
+                
+                cmd.extend([
+                    '-s', f"{target_width}x{target_height}",
+                    output_path
+                ])
+                
+                print(f"Executing final FFmpeg command to create: {output_path}")
+                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+                
+                if result.returncode != 0:
+                    print("FFmpeg Error:")
+                    print(result.stderr)
+                    raise Exception(f"FFmpeg failed with return code {result.returncode}")
+                
+            else:
+                # Fallback to direct encoding if concat fails
+                fallback_create_output(segment_files, output_path, output_duration, target_aspect)
+                
+        except Exception as e:
+            print(f"Error during montage creation: {e}")
+            print("Trying direct encoding fallback method...")
+            fallback_create_output(segment_files, output_path, output_duration, target_aspect)
+
 def main():
     parser = argparse.ArgumentParser(description='Create an exciting video montage from input videos for social media.')
     parser.add_argument('--input-string', '-i', help='Input string in format: "output_name, format, video1, video2, ..."')
-    parser.add_argument('videos', nargs='*', help='Input video files (if not using --input-string)')
-    parser.add_argument('--output', '-o', help='Output video file (if not using --input-string)')
+    parser.add_argument('--output', '-o', required=True, help='Output video file')
+    parser.add_argument('--format', '-f', required=True, choices=['vertical_portrait', 'instagram_square'], 
+                       help='Output video format/aspect ratio')
     parser.add_argument('--duration', '-d', type=int, choices=[30, 60, 90], default=60,
                        help='Output video duration in seconds (30, 60, or 90)')
-    parser.add_argument('--format', '-f', choices=['instagram_reel', 'tiktok', 'instagram_square'], 
-                       help='Output video format/aspect ratio (if not using --input-string)')
-    
-    # New panning options
+    parser.add_argument('--segments', choices=['few', 'some', 'lots'], default='some',
+                       help='Number of segments to create (few=3-7, some=6-12, lots=10-25)')
     parser.add_argument('--panning', action='store_true', help='Enable panning effects')
     parser.add_argument('--pan-strategy', choices=[d.value for d in PanDirection] + ['random', 'sequence'], default='random',
                        help='Panning strategy: specific direction, random, or sequence')
@@ -805,40 +1257,34 @@ def main():
     parser.add_argument('--pan-distance', type=float, default=0.2, help='Panning distance as percentage of frame (0.0-1.0)')
     parser.add_argument('--easing', choices=[e.value for e in EasingType], default=EasingType.EASE_IN_OUT.value,
                        help='Easing function for smooth panning')
-    
+    parser.add_argument('--intro-video', help='Video to play at the start before random segments')
+    parser.add_argument('--intro-audio', help='Audio file to play at the start (will fade into video audio)')
+    parser.add_argument('--intro-audio-duration', type=float, default=5.0,
+                       help='Duration of intro audio in seconds (default: 5.0)')
+    parser.add_argument('--intro-audio-volume', type=float, default=2.0,
+                       help='Volume multiplier for intro audio (default: 2.0)')
+    parser.add_argument('--text', nargs='+', help='Array of text strings to display')
+    parser.add_argument('--text-duration', type=int, default=5,
+                       help='Duration to display each text (in seconds)')
+    parser.add_argument('--text-gap', type=int, default=3,
+                       help='Gap between displaying texts (in seconds)')
+    parser.add_argument('--text-style', choices=['default', 'pulse', 'concert', 'promo'], default='default',
+                       help='Style of text overlay (default, pulse, concert, promo)')
+    parser.add_argument('input_video', nargs='?', help='Input video file')
+
     args = parser.parse_args()
     
     if not check_ffmpeg():
         sys.exit(1)
     
-    # Determine if we're using the string input mode or traditional args
-    if args.input_string:
-        output_name, format_name, input_videos = parse_input_string(args.input_string)
-        if not output_name or not format_name or not input_videos:
-            sys.exit(1)
-        
-        # Ensure output name has .mp4 extension
-        if not output_name.endswith('.mp4'):
-            output_name += '.mp4'
-            
-        output_path = output_name
-        video_format = format_name
-        videos = input_videos
-    else:
-        # Traditional argument mode
-        if not args.output:
-            print("Error: --output is required when not using --input-string")
-            sys.exit(1)
-        if not args.format:
-            print("Error: --format is required when not using --input-string")
-            sys.exit(1)
-        if not args.videos:
-            print("Error: At least one input video is required")
-            sys.exit(1)
-            
-        output_path = args.output
-        video_format = args.format
-        videos = args.videos
+    # Check if input video is provided
+    if not args.input_video:
+        print("Error: Input video file is required")
+        parser.print_help()
+        sys.exit(1)
+    
+    # Use the input video directly
+    videos = [args.input_video]
     
     categorized_videos = validate_inputs(videos)
     if not categorized_videos:
@@ -850,7 +1296,7 @@ def main():
         all_videos.extend(video_list)
     
     print(f"Current working directory: {os.path.abspath(os.getcwd())}")
-    print(f"Creating a {args.duration}-second {ASPECT_RATIOS[video_format]['description']} montage from {len(all_videos)} video(s)...")
+    print(f"Creating a {args.duration}-second {ASPECT_RATIOS[args.format]['description']} montage from {len(all_videos)} video(s)...")
     
     # Convert string arguments to enums
     easing_type = EasingType(args.easing)
@@ -872,15 +1318,24 @@ def main():
         create_video_montage(
             all_videos, 
             args.duration, 
-            output_path, 
-            video_format,
+            args.output, 
+            args.format,
             enable_panning=args.panning,
             pan_strategy=pan_strategy,
             pan_speed=args.pan_speed,
             pan_distance=args.pan_distance,
-            easing_type=easing_type
+            easing_type=easing_type,
+            segment_count=args.segments,
+            text_array=args.text,
+            text_display_duration=args.text_duration,
+            text_gap_duration=args.text_gap,
+            text_style=args.text_style,
+            intro_video=args.intro_video,
+            intro_audio=args.intro_audio,
+            intro_audio_duration=args.intro_audio_duration,
+            intro_audio_volume=args.intro_audio_volume
         )
-        abs_output_path = os.path.abspath(output_path)
+        abs_output_path = os.path.abspath(args.output)
         
         # Check if the file was actually created
         if os.path.exists(abs_output_path):

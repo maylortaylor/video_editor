@@ -1,0 +1,7 @@
+# Core dependencies
+argparse>=1.4.0
+
+# Optional dependencies for future features
+# opencv-python>=4.5.0  # For scene detection (if implemented)
+# numpy>=1.19.0        # For advanced video processing (if implemented)
+# moviepy>=1.0.0       # For additional video effects (if implemented) 
