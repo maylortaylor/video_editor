@@ -830,9 +830,13 @@ def create_logo_overlay_filter(
     y_pos = f"h*0.2"
 
     # Create filter string for logo overlay with fade effects
+    # Scale logo to 30% of video width while maintaining aspect ratio
+    # Use format=rgba to preserve transparency
+    # Add enable condition to ensure logo is only shown during video duration
     filter_string = (
         f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
         f"[0:v][logo]overlay=x='(W-w)/2':y={y_pos}:"
+        f"enable='between(t,0,{video_duration})':"
         f"alpha='if(lt(t,{fade_duration}),(t/{fade_duration}),"
         f"if(gt(t,{video_duration-fade_duration}),(1-(t-({video_duration-fade_duration}))/{fade_duration}),1))'[vout]"
     )
@@ -1737,7 +1741,11 @@ def create_video_montage(
                     if text_filter:
                         filter_parts.append(f"[0:v]{text_filter}")
                     if logo_filter:
-                        filter_parts.append(f"[0:v]{logo_filter}")
+                        # If we already have text filter, use its output as input for logo
+                        if text_filter:
+                            filter_parts.append(f"[vout]{logo_filter}")
+                        else:
+                            filter_parts.append(f"[0:v]{logo_filter}")
                     
                     # Join all filter parts with semicolons
                     filter_complex_str = ";".join(filter_parts)
