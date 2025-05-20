@@ -814,9 +814,20 @@ def create_logo_overlay_filter(
     video_duration,
     logo_path,
     target_aspect="vertical_portrait",
+    fade_in_duration=2.0,
+    fade_out_duration=2.0,
+    display_duration=10.0,
 ):
     """
     Create FFmpeg filter string for a logo overlay with fade effects.
+    
+    Args:
+        video_duration: Total duration of the video
+        logo_path: Path to the logo file
+        target_aspect: Target aspect ratio
+        fade_in_duration: Duration of fade in effect in seconds
+        fade_out_duration: Duration of fade out effect in seconds
+        display_duration: Total duration to display the logo in seconds
     """
     if not logo_path or not os.path.exists(logo_path):
         print(f"Warning: Logo file not found: {logo_path}")
@@ -829,10 +840,20 @@ def create_logo_overlay_filter(
     # Position logo near top (20% from top)
     y_pos = f"h*0.2"
 
-    # Create a simpler filter string for logo overlay
+    # Calculate timing
+    start_time = 0
+    full_opacity_start = start_time + fade_in_duration
+    full_opacity_end = min(full_opacity_start + display_duration, video_duration)
+    end_time = min(full_opacity_end + fade_out_duration, video_duration)
+
+    # Create filter string for logo overlay with fade effects
+    # Using proper FFmpeg expression syntax for alpha channel
     filter_string = (
         f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
-        f"[0:v][logo]overlay=x='(W-w)/2':y={y_pos}[vout]"
+        f"[0:v][logo]overlay=x='(W-w)/2':y={y_pos}:"
+        f"enable='between(t,{start_time},{end_time})':"
+        f"alpha='if(lt(t,{full_opacity_start}),t/{fade_in_duration},"
+        f"if(gt(t,{full_opacity_end}),1-(t-{full_opacity_end})/{fade_out_duration},1))'[vout]"
     )
 
     print(f"Debug: Using logo filter: {filter_string}")
@@ -1131,6 +1152,9 @@ def fallback_create_output(
     intro_audio_duration=5.0,
     intro_audio_volume=2.0,
     logo_path=None,
+    logo_fade_in=2.0,
+    logo_fade_out=2.0,
+    logo_duration=10.0,
 ):
     """Fallback method: Create output video by directly encoding all segments into one file."""
     print("Using fallback method to create video...")
@@ -1228,13 +1252,18 @@ def fallback_create_output(
 
     # Add logo overlay if provided
     if logo_path and os.path.exists(logo_path):
-        # Create logo filter
-        logo_filter = (
-            f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
-            f"{video_output}[logo]overlay=x='(W-w)/2':y='h*0.2'[vout]"
+        # Create logo filter with fade effects
+        logo_filter = create_logo_overlay_filter(
+            video_duration=video_duration,
+            logo_path=logo_path,
+            target_aspect=target_aspect,
+            fade_in_duration=logo_fade_in,
+            fade_out_duration=logo_fade_out,
+            display_duration=logo_duration,
         )
-        filter_complex.append(logo_filter)
-        video_output = "[vout]"
+        if logo_filter:
+            filter_complex.append(f"{video_output}{logo_filter}")
+            video_output = "[vout]"
     else:
         if video_output != "[outv]":
             filter_complex.append(f"{video_output}null[vout]")
@@ -1531,6 +1560,9 @@ def create_video_montage(
     intro_audio_volume=2.0,
     max_intro_length=20,
     logo_path=None,
+    logo_fade_in=2.0,
+    logo_fade_out=2.0,
+    logo_duration=10.0,
 ):
     """Create a montage video with hardware acceleration if available."""
 
@@ -1712,6 +1744,9 @@ def create_video_montage(
                     video_duration=output_duration,
                     logo_path=logo_path,
                     target_aspect=target_aspect,
+                    fade_in_duration=logo_fade_in,
+                    fade_out_duration=logo_fade_out,
+                    display_duration=logo_duration,
                 )
 
                 # Set target dimensions
@@ -1854,6 +1889,9 @@ def create_video_montage(
                     intro_audio_duration=intro_audio_duration,
                     intro_audio_volume=intro_audio_volume,
                     logo_path=logo_path,
+                    logo_fade_in=logo_fade_in,
+                    logo_fade_out=logo_fade_out,
+                    logo_duration=logo_duration,
                 )
 
         except Exception as e:
@@ -1873,6 +1911,9 @@ def create_video_montage(
                 intro_audio_duration=intro_audio_duration,
                 intro_audio_volume=intro_audio_volume,
                 logo_path=logo_path,
+                logo_fade_in=logo_fade_in,
+                logo_fade_out=logo_fade_out,
+                logo_duration=logo_duration,
             )
     finally:
         # Clean up temporary files
@@ -1998,6 +2039,24 @@ def main():
         "--logo",
         help="Path to a transparent PNG logo to overlay on the video",
     )
+    parser.add_argument(
+        "--logo-fade-in",
+        type=float,
+        default=2.0,
+        help="Duration of logo fade in effect in seconds (default: 2.0)",
+    )
+    parser.add_argument(
+        "--logo-fade-out",
+        type=float,
+        default=2.0,
+        help="Duration of logo fade out effect in seconds (default: 2.0)",
+    )
+    parser.add_argument(
+        "--logo-duration",
+        type=float,
+        default=10.0,
+        help="Total duration to display the logo in seconds (default: 10.0)",
+    )
     parser.add_argument("input_video", nargs="?", help="Input video file")
 
     args = parser.parse_args()
@@ -2085,6 +2144,9 @@ def main():
             intro_audio_volume=args.intro_audio_volume,
             max_intro_length=args.intro_video_length,
             logo_path=args.logo,
+            logo_fade_in=args.logo_fade_in,
+            logo_fade_out=args.logo_fade_out,
+            logo_duration=args.logo_duration,
         )
         abs_output_path = os.path.abspath(output_path)
 
