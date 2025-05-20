@@ -1738,24 +1738,29 @@ def create_video_montage(
                 # Handle text and logo filters
                 if text_filter or logo_filter:
                     filter_parts = []
-                    current_input = "[0:v]"
                     
-                    # Apply text filter if present
+                    # Start with the video input
+                    filter_parts.append("[0:v]split=2[v1][v2]")
+                    
+                    # Apply text filter to first stream
                     if text_filter:
-                        filter_parts.append(f"{current_input}{text_filter}")
-                        current_input = "[text]"
+                        filter_parts.append(f"[v1]{text_filter}")
+                    else:
+                        filter_parts.append("[v1]null[v1out]")
                     
-                    # Apply logo filter if present
+                    # Apply logo filter to second stream
                     if logo_filter:
-                        # If we have text, use its output as input for logo
-                        if text_filter:
-                            filter_parts.append(f"{current_input}{logo_filter}")
-                        else:
-                            # If no text, apply logo directly to video
-                            filter_parts.append(f"{current_input}{logo_filter}")
-                        current_input = "[vout]"
+                        filter_parts.append(f"[v2]{logo_filter}")
+                    else:
+                        filter_parts.append("[v2]null[v2out]")
+                    
+                    # Overlay the two streams
+                    if text_filter and logo_filter:
+                        filter_parts.append("[v1out][v2out]overlay=0:0[vout]")
                     elif text_filter:
-                        filter_parts.append(f"{current_input}null[vout]")
+                        filter_parts.append("[v1out]null[vout]")
+                    elif logo_filter:
+                        filter_parts.append("[v2out]null[vout]")
                     
                     # Join all filter parts with semicolons
                     filter_complex_str = ";".join(filter_parts)
