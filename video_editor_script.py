@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import cmd
 import os
 import sys
 import random
@@ -1230,7 +1231,7 @@ def fallback_create_output(
         filter_complex.append(audio_mix)
     filter_complex_str = ";".join(filter_complex)
 
-    # Build the full command
+    # Build the final FFmpeg command
     cmd = ["ffmpeg", "-y"]
     cmd.extend(inputs)
     cmd.extend(
