@@ -49,7 +49,8 @@ python3 video_editor_script.py \
      -o promo_video.mp4 \
      -f vertical_portrait \
      -d 30 \
-     --intro-video "/Users/matttaylor/Documents/Maylor/test.MP4" \
+     --intro-video "/Users/matttaylor/Documents/Maylor/videos/FunnyVoices.mp4" \
+     --intro-video-length 5 \
      --intro-audio "/Users/matttaylor/Documents/Maylor/test.MP4" \
      --text-style promo \
      --text="@Suite.E.Studios" \
@@ -101,8 +102,23 @@ python3 video_editor_script.py \
      -d 90 \
      --segments lots \
      --panning \
-     --intro-video "/Users/matttaylor/Documents/Maylor/test.MP4" \
+     --intro-video "/Users/matttaylor/Documents/Maylor/videos/FunnyVoices.mp4" \
+     --intro-video-length 10 \
      --intro-audio "/Users/matttaylor/Documents/Maylor/test.MP4" \
+     --text-style promo \
+     --text="@Suite.E.Studios" \
+     "/Users/matttaylor/Documents/Maylor/test.MP4"
+```
+
+```bash
+python3 video_editor_script.py \
+     -o full_promo.mp4 \
+     -f vertical_portrait \
+     -d 30 \
+     --segments lots \
+     --panning \
+     --intro-video "/Users/matttaylor/Documents/Maylor/videos/FunnyVoices.mp4" \
+     --intro-video-length 5 \
      --text-style promo \
      --text="@Suite.E.Studios" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
@@ -161,7 +177,10 @@ python3 video_editor_script.py -o output.mp4 -f vertical_portrait "/Users/mattta
 | `--text` | Text overlay to display (single text string) |
 | `--text-style` | Text style: `default`, `pulse`, `concert`, or `promo` |
 | `--intro-video` | Video to play at the start |
+| `--intro-video-length` | Maximum length of intro video in seconds (5-30 seconds, default: 20) |
 | `--intro-audio` | Audio file to play at the start |
+| `--intro-audio-duration` | Duration of intro audio in seconds (default: 5.0) |
+| `--intro-audio-volume` | Volume multiplier for intro audio (default: 2.0) |
 | `input_video` | Input video file (required, must be last argument) |
 
 ### Supported Formats

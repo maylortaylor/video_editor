@@ -720,7 +720,7 @@ def create_ffmpeg_command(input_file, output_file, vf_filter, duration=None, hw_
     
     return cmd
 
-def process_intro_segment(intro_video_path, target_aspect, temp_dir):
+def process_intro_segment(intro_video_path, target_aspect, temp_dir, max_intro_length=20):
     """Process the intro video segment with proper scaling and formatting."""
     if not intro_video_path or not os.path.exists(intro_video_path):
         return None
@@ -734,13 +734,29 @@ def process_intro_segment(intro_video_path, target_aspect, temp_dir):
         # Detect hardware encoder
         hw_encoder, _, _ = detect_hardware_encoders()
         
-        # Create FFmpeg command with hardware acceleration
-        cmd = create_ffmpeg_command(
-            input_file=intro_video_path,
-            output_file=intro_segment_file,
-            vf_filter=scaling_filter,
-            hw_encoder=hw_encoder
-        )
+        # Get intro video duration
+        intro_duration = get_video_duration(intro_video_path)
+        
+        # If intro video is longer than max_intro_length, create a segment of that length
+        if intro_duration > max_intro_length:
+            print(f"Intro video is {intro_duration:.1f} seconds long. Creating a {max_intro_length}-second segment...")
+            # Create FFmpeg command with hardware acceleration and duration limit
+            cmd = create_ffmpeg_command(
+                input_file=intro_video_path,
+                output_file=intro_segment_file,
+                vf_filter=scaling_filter,
+                hw_encoder=hw_encoder,
+                duration=max_intro_length  # Use the specified max length
+            )
+        else:
+            print(f"Using full intro video ({intro_duration:.1f} seconds)...")
+            # Create FFmpeg command with hardware acceleration
+            cmd = create_ffmpeg_command(
+                input_file=intro_video_path,
+                output_file=intro_segment_file,
+                vf_filter=scaling_filter,
+                hw_encoder=hw_encoder
+            )
         
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         
@@ -748,6 +764,10 @@ def process_intro_segment(intro_video_path, target_aspect, temp_dir):
             print(f"Warning: Failed to process intro video: {result.stderr}")
             return None
             
+        # Verify the processed intro segment
+        processed_duration = get_video_duration(intro_segment_file)
+        print(f"Processed intro segment duration: {processed_duration:.1f} seconds")
+        
         return intro_segment_file
     except Exception as e:
         print(f"Error processing intro segment: {e}")
@@ -1078,7 +1098,8 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
                          enable_panning=True, pan_strategy="random", pan_speed=1.0, 
                          pan_distance=0.2, easing_type=EasingType.EASE_IN_OUT, segment_count="some",
                          text=None, text_display_duration=5, text_style="default", text_motion="none", 
-                         intro_video=None, intro_audio=None, intro_audio_duration=5.0, intro_audio_volume=2.0):
+                         intro_video=None, intro_audio=None, intro_audio_duration=5.0, intro_audio_volume=2.0,
+                         max_intro_length=20):
     """Create a montage video with hardware acceleration if available."""
     
     # Create a temporary directory that will be automatically cleaned up
@@ -1090,7 +1111,7 @@ def create_video_montage(video_paths, output_duration, output_path, target_aspec
         # Process intro video if provided
         intro_segment = None
         if intro_video and os.path.exists(intro_video):
-            intro_segment = process_intro_segment(intro_video, target_aspect, temp_dir)
+            intro_segment = process_intro_segment(intro_video, target_aspect, temp_dir, max_intro_length)
             if intro_segment:
                 segment_files.append(intro_segment)
                 print(f"Added intro video segment: {get_video_duration(intro_segment):.2f} seconds")
@@ -1395,6 +1416,8 @@ def main():
                        help='Duration of intro audio in seconds (default: 5.0)')
     parser.add_argument('--intro-audio-volume', type=float, default=2.0,
                        help='Volume multiplier for intro audio (default: 2.0)')
+    parser.add_argument('--intro-video-length', type=int, default=20,
+                       help='Maximum length of intro video in seconds (5-30 seconds, default: 20)')
     parser.add_argument('--text', help='Text string to display')
     parser.add_argument('--text-duration', type=int, default=5,
                        help='Duration to display text (in seconds)')
@@ -1405,6 +1428,11 @@ def main():
     parser.add_argument('input_video', nargs='?', help='Input video file')
 
     args = parser.parse_args()
+    
+    # Validate intro video length
+    if args.intro_video_length < 5 or args.intro_video_length > 30:
+        print("Error: Intro video length must be between 5 and 30 seconds")
+        sys.exit(1)
     
     if not check_ffmpeg():
         sys.exit(1)
@@ -1465,7 +1493,8 @@ def main():
             intro_video=args.intro_video,
             intro_audio=args.intro_audio,
             intro_audio_duration=args.intro_audio_duration,
-            intro_audio_volume=args.intro_audio_volume
+            intro_audio_volume=args.intro_audio_volume,
+            max_intro_length=args.intro_video_length
         )
         abs_output_path = os.path.abspath(args.output)
         
