@@ -809,6 +809,37 @@ def create_text_overlay_filter(
     return filter_string
 
 
+def create_logo_overlay_filter(
+    video_duration,
+    logo_path,
+    target_aspect="vertical_portrait",
+):
+    """
+    Create FFmpeg filter string for a logo overlay with fade effects.
+    """
+    if not logo_path or not os.path.exists(logo_path):
+        return ""
+
+    fade_duration = 2  # 2-second fade in/out
+
+    # Get target dimensions
+    target_width = ASPECT_RATIOS[target_aspect]["width"]
+    target_height = ASPECT_RATIOS[target_aspect]["height"]
+
+    # Position logo near top (20% from top)
+    y_pos = f"h*0.2"
+
+    # Create filter string for logo overlay with fade effects
+    filter_string = (
+        f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
+        f"[0:v][logo]overlay=x='(W-w)/2':y={y_pos}:"
+        f"alpha='if(lt(t,{fade_duration}),(t/{fade_duration}),"
+        f"if(gt(t,{video_duration-fade_duration}),(1-(t-({video_duration-fade_duration}))/{fade_duration}),1))'[vout]"
+    )
+
+    return filter_string
+
+
 def detect_hardware_encoders():
     """
     Detect available hardware encoders on the system.
@@ -1123,9 +1154,9 @@ def fallback_create_output(
     # Add main segments
     for i, segment_file in enumerate(segment_files):
         inputs.extend(["-i", segment_file])
-        filter_complex.append(f"[{i+1}:v]scale={target_width}:{target_height}[v{i}]")
+        filter_complex.append(f"[{i}:v]scale={target_width}:{target_height}[v{i}]")
         filter_complex.append(
-            f"[{i+1}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{i}]"
+            f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{i}]"
         )
 
     # Concatenate video streams
@@ -1479,6 +1510,7 @@ def create_video_montage(
     intro_audio_duration=5.0,
     intro_audio_volume=2.0,
     max_intro_length=20,
+    logo_path=None,
 ):
     """Create a montage video with hardware acceleration if available."""
 
@@ -1655,6 +1687,13 @@ def create_video_montage(
                     motion_type=text_motion,
                 )
 
+                # Add logo overlay if provided
+                logo_filter = create_logo_overlay_filter(
+                    video_duration=output_duration,
+                    logo_path=logo_path,
+                    target_aspect=target_aspect,
+                )
+
                 # Set target dimensions
                 target_width = ASPECT_RATIOS[target_aspect]["width"]
                 target_height = ASPECT_RATIOS[target_aspect]["height"]
@@ -1686,12 +1725,16 @@ def create_video_montage(
                 cmd = ["ffmpeg", "-y"]
                 cmd.extend(inputs)
 
-                if text_filter:
-                    # Create filter complex with text overlay
-                    filter_complex.append(f"[0:v]{text_filter}[vout]")
-
+                # Combine text and logo filters
+                if text_filter or logo_filter:
+                    filter_parts = []
+                    if text_filter:
+                        filter_parts.append(f"[0:v]{text_filter}")
+                    if logo_filter:
+                        filter_parts.append(f"[0:v]{logo_filter}")
+                    
                     # Join all filter parts with semicolons
-                    filter_complex_str = ";".join(filter_complex)
+                    filter_complex_str = ";".join(filter_parts)
                     cmd.extend(["-filter_complex", filter_complex_str])
                     cmd.extend(["-map", "[vout]"])
                 else:
@@ -1914,6 +1957,10 @@ def main():
         default=TextMotionType.NONE.value,
         help="Type of text motion effect (none, dvd_bounce)",
     )
+    parser.add_argument(
+        "--logo",
+        help="Path to a transparent PNG logo to overlay on the video",
+    )
     parser.add_argument("input_video", nargs="?", help="Input video file")
 
     args = parser.parse_args()
@@ -2000,6 +2047,7 @@ def main():
             intro_audio_duration=args.intro_audio_duration,
             intro_audio_volume=args.intro_audio_volume,
             max_intro_length=args.intro_video_length,
+            logo_path=args.logo,
         )
         abs_output_path = os.path.abspath(output_path)
 

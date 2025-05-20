@@ -121,6 +121,18 @@ python3 video_editor_script.py \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
 
+9. Logo Overlay Example (30s):
+```bash
+python3 video_editor_script.py \
+     -o logo_highlight.mp4 \
+     -f vertical_portrait \
+     -d 30 \
+     --logo "/Users/matttaylor/Documents/Maylor/SuiteE_vector_WHITE.png" \
+     --text-style pro \
+     --text="@Suite.E.Studios" \
+     "/Users/matttaylor/Documents/Maylor/test.MP4"
+```
+
 ## Prerequisites
 
 - Python 3.6 or higher
@@ -173,6 +185,7 @@ python3 video_editor_script.py -o output.mp4 -f vertical_portrait "/Users/mattta
 | `--pan-strategy` | Panning direction or strategy |
 | `--text` | Text overlay to display (single text string) |
 | `--text-style` | Text style: `default`, `pulse`, `pro`, `promo`, or `impact` |
+| `--logo` | Path to a transparent PNG logo to overlay on the video |
 | `--intro-video` | Video to play at the start |
 | `--intro-video-length` | Maximum length of intro video in seconds (5-30 seconds, default: 20) |
 | `--intro-audio` | Audio file to play at the start |
@@ -290,3 +303,20 @@ When adding new features, please add corresponding tests to ensure:
 2. Edge cases are handled properly
 3. Error conditions are caught
 4. Performance is maintained
+
+### Logo Overlay Features
+
+- Supports transparent PNG images
+- Automatically scales logo to 30% of video width while maintaining aspect ratio
+- Positions logo near the top of the video (20% from top)
+- Includes 2-second fade in/out effects
+- Works alongside text overlays
+- Centered horizontally
+
+### Best Practices for Logo Overlay
+
+1. Use a transparent PNG file for best results
+2. Keep logo file size reasonable (under 1MB recommended)
+3. Use a logo with good contrast against video backgrounds
+4. Ensure logo has sufficient resolution (at least 300x300 pixels)
+5. Test logo visibility against different video content
