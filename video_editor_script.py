@@ -834,7 +834,7 @@ def create_logo_overlay_filter(
     # Use format=rgba to preserve transparency
     # Add enable condition to ensure logo is only shown during video duration
     filter_string = (
-        f"movie={logo_path},format=auto,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
+        f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
         f"[0:v][logo]overlay=x='(W-w)/2':y={y_pos}:"
         f"enable='between(t,0,{video_duration})':"
         f"alpha='if(lt(t,{fade_duration}),(t/{fade_duration}),"
@@ -1735,19 +1735,27 @@ def create_video_montage(
                 cmd = ["ffmpeg", "-y"]
                 cmd.extend(inputs)
 
-                # Handle text and logo filters separately
+                # Handle text and logo filters
                 if text_filter or logo_filter:
                     filter_parts = []
                     current_input = "[0:v]"
                     
-                    # Add text filter if present
+                    # Apply text filter if present
                     if text_filter:
                         filter_parts.append(f"{current_input}{text_filter}")
-                        current_input = "[vout]"
+                        current_input = "[text]"
                     
-                    # Add logo filter if present
+                    # Apply logo filter if present
                     if logo_filter:
-                        filter_parts.append(f"{current_input}{logo_filter}")
+                        # If we have text, use its output as input for logo
+                        if text_filter:
+                            filter_parts.append(f"{current_input}{logo_filter}")
+                        else:
+                            # If no text, apply logo directly to video
+                            filter_parts.append(f"{current_input}{logo_filter}")
+                        current_input = "[vout]"
+                    elif text_filter:
+                        filter_parts.append(f"{current_input}null[vout]")
                     
                     # Join all filter parts with semicolons
                     filter_complex_str = ";".join(filter_parts)
