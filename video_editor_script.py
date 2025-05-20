@@ -818,9 +818,8 @@ def create_logo_overlay_filter(
     Create FFmpeg filter string for a logo overlay with fade effects.
     """
     if not logo_path or not os.path.exists(logo_path):
+        print(f"Warning: Logo file not found: {logo_path}")
         return ""
-
-    fade_duration = 2  # 2-second fade in/out
 
     # Get target dimensions
     target_width = ASPECT_RATIOS[target_aspect]["width"]
@@ -829,18 +828,13 @@ def create_logo_overlay_filter(
     # Position logo near top (20% from top)
     y_pos = f"h*0.2"
 
-    # Create filter string for logo overlay with fade effects
-    # Scale logo to 30% of video width while maintaining aspect ratio
-    # Use format=rgba to preserve transparency
-    # Add enable condition to ensure logo is only shown during video duration
+    # Create a simpler filter string for logo overlay
     filter_string = (
         f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
-        f"[0:v][logo]overlay=x='(W-w)/2':y={y_pos}:"
-        f"enable='between(t,0,{video_duration})':"
-        f"alpha='if(lt(t,{fade_duration}),(t/{fade_duration}),"
-        f"if(gt(t,{video_duration-fade_duration}),(1-(t-({video_duration-fade_duration}))/{fade_duration}),1))'[vout]"
+        f"[0:v][logo]overlay=x='(W-w)/2':y={y_pos}[vout]"
     )
 
+    print(f"Debug: Using logo filter: {filter_string}")
     return filter_string
 
 
@@ -1731,38 +1725,34 @@ def create_video_montage(
                         ]
                     )
 
-                # Build the final FFmpeg command
-                cmd = ["ffmpeg", "-y"]
-                cmd.extend(inputs)
-
                 # Handle text and logo filters
                 if text_filter or logo_filter:
                     filter_parts = []
+                    input_label = "[0:v]"
                     
-                    # Start with the video input
-                    filter_parts.append("[0:v]split=2[v1][v2]")
-                    
-                    # Apply text filter to first stream
+                    # Apply text filter if present
                     if text_filter:
-                        filter_parts.append(f"[v1]{text_filter}")
-                    else:
-                        filter_parts.append("[v1]null[v1out]")
+                        # Remove output label if present
+                        text_filter_clean = text_filter
+                        if text_filter_clean.endswith("[vout]"):
+                            text_filter_clean = text_filter_clean[:-6]
+                        filter_parts.append(f"{input_label}{text_filter_clean}[tmp1]")
+                        input_label = "[tmp1]"
                     
-                    # Apply logo filter to second stream
+                    # Apply logo overlay if present
                     if logo_filter:
-                        filter_parts.append(f"[v2]{logo_filter}")
+                        # logo_filter is a full filtergraph, so we need to split it
+                        # It should be of the form: movie=...[logo];[X][logo]overlay=...[vout]
+                        logo_movie_part = logo_filter.split(';')[0]
+                        logo_overlay_part = logo_filter.split(';')[1]
+                        filter_parts.append(logo_movie_part)
+                        # Replace [0:v] with the current input_label
+                        overlay_part = logo_overlay_part.replace("[0:v]", input_label)
+                        filter_parts.append(overlay_part)
                     else:
-                        filter_parts.append("[v2]null[v2out]")
+                        # If no logo, just output the last label as [vout]
+                        filter_parts.append(f"{input_label}null[vout]")
                     
-                    # Overlay the two streams
-                    if text_filter and logo_filter:
-                        filter_parts.append("[v1out][v2out]overlay=0:0[vout]")
-                    elif text_filter:
-                        filter_parts.append("[v1out]null[vout]")
-                    elif logo_filter:
-                        filter_parts.append("[v2out]null[vout]")
-                    
-                    # Join all filter parts with semicolons
                     filter_complex_str = ";".join(filter_parts)
                     cmd.extend(["-filter_complex", filter_complex_str])
                     cmd.extend(["-map", "[vout]"])

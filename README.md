@@ -11,6 +11,16 @@ A Python script that creates exciting video montages optimized for social media 
 - Hardware acceleration support for M2 Max and NVIDIA GPUs
 - Smart segment selection based on audio energy
 - Multiple text overlay styles with dynamic sizing
+- **Robust logo overlay feature that works with or without text overlays**
+- **Debug output for logo filter construction**
+
+## Recent Changes
+
+- **Logo overlay is now robust and always appears as the last step in the filter graph.**
+- **Text overlays (if present) are applied before the logo overlay.**
+- **No fade in/out for logo by default (can be added if needed).**
+- **Filter graph construction is now compatible with FFmpeg's requirements.**
+- **Script prints debug output for the logo filter.**
 
 ## Examples
 
@@ -131,7 +141,46 @@ python3 video_editor_script.py \
      --text-style pro \
      --text="@Suite.E.Studios" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
+
+python 3 video_editor_script.py -o logo_highlight.mp4 -f vertical_portrait -d 30 --logo "/Users/matttaylor/Documents/Maylor/SuiteE_vector_WHITE.png" "/Users/matttaylor/Documents/Maylor/test.MP4" --segments few
 ```
+
+## Logo Overlay Features
+
+- Supports transparent PNG images
+- Automatically scales logo to 30% of video width while maintaining aspect ratio
+- Positions logo near the top of the video (20% from top)
+- **Logo overlay is always applied after any text overlays**
+- **No fade in/out by default (can be added if needed)**
+- Works alongside text overlays
+- Centered horizontally
+- Prints debug output for the logo filter string
+
+## Troubleshooting Logo Overlay
+
+If your logo is not appearing on the video:
+
+1. **Check the PNG file:**
+   - Ensure it is a valid PNG with transparency (alpha channel).
+   - Make sure the file path is correct and accessible.
+2. **Check the filter graph order:**
+   - The script now applies text overlays first, then logo overlay as the last step. This is required for FFmpeg compatibility.
+3. **Check debug output:**
+   - The script prints the exact filter string used for the logo overlay. Review this output for errors or typos.
+4. **No fade in/out:**
+   - The current version does not apply fade in/out to the logo overlay. If you need this, request it and it can be added robustly.
+5. **Still not working?**
+   - Try running FFmpeg manually with the printed filter string to isolate issues.
+   - Ensure your FFmpeg version is up to date (7.x or later recommended).
+
+## Advanced: Filter Graph Order
+
+For advanced users, the correct filter graph order for overlays is:
+
+- `[0:v]drawtext=...[tmp1];movie=logo.png,scale=...:h=...[logo];[tmp1][logo]overlay=...:y=...[vout]`
+- If no text: `[0:v]movie=logo.png,scale=...:h=...[logo];[0:v][logo]overlay=...:y=...[vout]`
+
+This ensures the logo is always the topmost overlay.
 
 ## Prerequisites
 
@@ -303,20 +352,3 @@ When adding new features, please add corresponding tests to ensure:
 2. Edge cases are handled properly
 3. Error conditions are caught
 4. Performance is maintained
-
-### Logo Overlay Features
-
-- Supports transparent PNG images
-- Automatically scales logo to 30% of video width while maintaining aspect ratio
-- Positions logo near the top of the video (20% from top)
-- Includes 2-second fade in/out effects
-- Works alongside text overlays
-- Centered horizontally
-
-### Best Practices for Logo Overlay
-
-1. Use a transparent PNG file for best results
-2. Keep logo file size reasonable (under 1MB recommended)
-3. Use a logo with good contrast against video backgrounds
-4. Ensure logo has sufficient resolution (at least 300x300 pixels)
-5. Test logo visibility against different video content
