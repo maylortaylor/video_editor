@@ -606,16 +606,20 @@ def calculate_dynamic_text_size(text, target_aspect, style="default"):
         base_size = 60
         min_size = 40
         max_size = 100
-    elif style == "concert":
+    elif style == "pro":
         base_size = 80
         min_size = 40
         max_size = 100
     elif style == "promo":
-        base_size = 60
+        base_size = 80
         min_size = 40
-        max_size = 80
+        max_size = 100
+    elif style == "impact":
+        base_size = 80
+        min_size = 40
+        max_size = 100
     else:  # default
-        base_size = 60
+        base_size = 80
         min_size = 40
         max_size = 100
 
@@ -673,9 +677,11 @@ def create_text_overlay_filter(
     # Set vertical position based on style
     if style == "pulse":
         y_pos = "h*0.75"
-    elif style == "concert":
+    elif style == "pro":
         y_pos = "h*0.75"
     elif style == "promo":
+        y_pos = "h*0.75"
+    elif style == "impact":
         y_pos = "h*0.75"
     else:
         y_pos = "h*0.75"
@@ -708,8 +714,8 @@ def create_text_overlay_filter(
             f"text='{escaped_text}':"
             f"fontsize={size_expr}:"
             f"fontcolor=white:"
-            f"fontfile=/System/Library/Fonts/Arial Black.ttc:"  # Use system font
-            f"borderw=3:"
+            f"fontfile=/System/Library/Fonts/Supplemental/Arial Black.ttf:"  # Updated path
+            f"borderw=8:"  # Updated default border width
             f"bordercolor=black:"
             f"x='{x_pos}':"
             f"y='{y_pos}':"
@@ -724,7 +730,7 @@ def create_text_overlay_filter(
             f"text='{escaped_text}':"
             f"fontsize={size_expr}:"
             f"fontcolor=white:"
-            f"fontfile=/System/Library/Fonts/Arial Black.ttc:"  # Use system font
+            f"fontfile=/System/Library/Fonts/Supplemental/Arial Black.ttf:"  # Updated path
             f"x=if(gte(tw\\,{target_width-2*h_margin})\\,{h_margin}\\,max({h_margin}\\,(w-tw)/2)):"
             f"y={y_pos}:"
             f"enable=between(t\\,{start_time}\\,{end_time}):"
@@ -733,16 +739,16 @@ def create_text_overlay_filter(
         )
 
         # Add style-specific effects
-        if style == "concert":
-            # Enhanced concert style with multiple layers for better glow effect
+        if style == "pro":  # Changed from "concert" to "pro"
+            # Enhanced pro style with multiple layers for better effect
             filter_string = (
                 # Main text with thick black outline
                 f"drawtext="
                 f"text='{escaped_text}':"
                 f"fontsize={size_expr}:"
                 f"fontcolor=white:"
-                f"fontfile=/System/Library/Fonts/Arial Black.ttc:"
-                f"borderw=6:"  # Thicker border
+                f"fontfile=/System/Library/Fonts/Supplemental/Arial Black.ttf:"
+                f"borderw=8:"  # Thicker border
                 f"bordercolor=black@0.9:"  # More opaque border
                 f"x=if(gte(tw\\,{target_width-2*h_margin})\\,{h_margin}\\,max({h_margin}\\,(w-tw)/2)):"
                 f"y={y_pos}:"
@@ -750,28 +756,46 @@ def create_text_overlay_filter(
                 f"alpha=if(lt(t\\,{full_opacity_start})\\,(t-{start_time})/{fade_duration}\\,"
                 f"if(gt(t\\,{full_opacity_end})\\,1-(t-{full_opacity_end})/{fade_duration}\\,1))"
                 f","
-                # Outer glow effect
+                # Add a subtle shadow effect
                 f"drawtext="
                 f"text='{escaped_text}':"
                 f"fontsize={size_expr}:"
-                f"fontcolor=white:"
-                f"fontfile=/System/Library/Fonts/Arial Black.ttc:"
-                f"borderw=12:"  # Very thick border for glow
-                f"bordercolor=white@0.3:"  # Semi-transparent white for glow
+                f"fontcolor=black@0.5:"  # Semi-transparent black
+                f"fontfile=/System/Library/Fonts/Supplemental/Arial Black.ttf:"
+                f"x='if(gte(tw\\,{target_width-2*h_margin})\\,{h_margin}\\,max({h_margin}\\,(w-tw)/2))+4':"  # Offset by 4 pixels
+                f"y='{y_pos}+4':"  # Offset by 4 pixels
+                f"enable=between(t\\,{start_time}\\,{end_time}):"
+                f"alpha=if(lt(t\\,{full_opacity_start})\\,(t-{start_time})/{fade_duration}\\,"
+                f"if(gt(t\\,{full_opacity_end})\\,1-(t-{full_opacity_end})/{fade_duration}\\,1))"
+            )
+        elif style == "promo":
+            # Promo style with yellow text and thick black outline
+            filter_string = (
+                # Main text with thick black outline
+                f"drawtext="
+                f"text='{escaped_text}':"
+                f"fontsize={size_expr}:"
+                f"fontcolor=yellow:"  # Yellow text
+                f"fontfile=/System/Library/Fonts/Supplemental/Futura.ttc:"  # Updated path
+                f"borderw=8:"  # Updated to match pro style
+                f"bordercolor=black@0.9:"  # More opaque border
                 f"x=if(gte(tw\\,{target_width-2*h_margin})\\,{h_margin}\\,max({h_margin}\\,(w-tw)/2)):"
                 f"y={y_pos}:"
                 f"enable=between(t\\,{start_time}\\,{end_time}):"
                 f"alpha=if(lt(t\\,{full_opacity_start})\\,(t-{start_time})/{fade_duration}\\,"
                 f"if(gt(t\\,{full_opacity_end})\\,1-(t-{full_opacity_end})/{fade_duration}\\,1))"
-                f","
-                # Inner glow effect
+            )
+        elif style == "impact":
+            # Impact style with white text and thick black outline
+            filter_string = (
+                # Main text with thick black outline
                 f"drawtext="
                 f"text='{escaped_text}':"
                 f"fontsize={size_expr}:"
-                f"fontcolor=white:"
-                f"fontfile=/System/Library/Fonts/Arial Black.ttc:"
-                f"borderw=3:"  # Thin border for inner glow
-                f"bordercolor=white@0.5:"  # Semi-transparent white for inner glow
+                f"fontcolor=white:"  # White text
+                f"fontfile=/System/Library/Fonts/Supplemental/Impact.ttf:"  # Updated path
+                f"borderw=8:"  # Thick border
+                f"bordercolor=black@0.9:"  # More opaque border
                 f"x=if(gte(tw\\,{target_width-2*h_margin})\\,{h_margin}\\,max({h_margin}\\,(w-tw)/2)):"
                 f"y={y_pos}:"
                 f"enable=between(t\\,{start_time}\\,{end_time}):"
@@ -780,7 +804,7 @@ def create_text_overlay_filter(
             )
         else:
             # Add standard border for other styles
-            filter_string += f":borderw=3:bordercolor=black"
+            filter_string += f":borderw=8:bordercolor=black"  # Updated default border width
 
     return filter_string
 
@@ -1880,9 +1904,9 @@ def main():
     )
     parser.add_argument(
         "--text-style",
-        choices=["default", "pulse", "concert", "promo"],
+        choices=["default", "pulse", "pro", "promo", "impact"],
         default="default",
-        help="Style of text overlay (default, pulse, concert, promo)",
+        help="Style of text overlay (default, pulse, pro, promo, impact)",
     )
     parser.add_argument(
         "--text-motion",

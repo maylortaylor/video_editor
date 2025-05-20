@@ -16,10 +16,10 @@ A Python script that creates exciting video montages optimized for social media 
 
 Here are some example commands to get you started. Note that the input video file must be provided as the last argument, and text arguments should use the `--text=` format:
 
-1. Basic Concert Highlight (30s):
+1. Basic Pro Highlight (30s):
 ```bash
 python3 video_editor_script.py \
-     -o concert_highlight.mp4 \
+     -o pro_highlight.mp4 \
      -f vertical_portrait \
      -d 30 \
      --text="@Suite.E.Studios" \
@@ -65,7 +65,7 @@ python3 video_editor_script.py \
      -d 60 \
      --segments lots \
      --panning \
-     --text-style concert \
+     --text-style pro \
      --text="@Suite.E.Studios" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
@@ -82,14 +82,14 @@ python3 video_editor_script.py \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
 
-6. Simple Concert Montage (30s):
+6. Simple Pro Montage (30s):
 ```bash
 python3 video_editor_script.py \
-     -o concert_montage.mp4 \
+     -o pro_montage.mp4 \
      -f vertical_portrait \
      -d 30 \
      --segments few \
-     --text-style concert \
+     --text-style pro \
      --text="@Suite.E.Studios" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
@@ -110,16 +110,13 @@ python3 video_editor_script.py \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
 
+8. Impact Style Highlight (30s):
 ```bash
 python3 video_editor_script.py \
-     -o full_promo.mp4 \
+     -o impact_highlight.mp4 \
      -f vertical_portrait \
      -d 30 \
-     --segments lots \
-     --panning \
-     --intro-video "/Users/matttaylor/Documents/Maylor/videos/FunnyVoices.mp4" \
-     --intro-video-length 5 \
-     --text-style promo \
+     --text-style impact \
      --text="@Suite.E.Studios" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
@@ -175,7 +172,7 @@ python3 video_editor_script.py -o output.mp4 -f vertical_portrait "/Users/mattta
 | `--panning` | Enable panning effects |
 | `--pan-strategy` | Panning direction or strategy |
 | `--text` | Text overlay to display (single text string) |
-| `--text-style` | Text style: `default`, `pulse`, `concert`, or `promo` |
+| `--text-style` | Text style: `default`, `pulse`, `pro`, `promo`, or `impact` |
 | `--intro-video` | Video to play at the start |
 | `--intro-video-length` | Maximum length of intro video in seconds (5-30 seconds, default: 20) |
 | `--intro-audio` | Audio file to play at the start |
