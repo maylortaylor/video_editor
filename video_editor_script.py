@@ -805,7 +805,9 @@ def create_text_overlay_filter(
             )
         else:
             # Add standard border for other styles
-            filter_string += f":borderw=8:bordercolor=black"  # Updated default border width
+            filter_string += (
+                f":borderw=8:bordercolor=black"  # Updated default border width
+            )
 
     return filter_string
 
@@ -846,14 +848,12 @@ def create_logo_overlay_filter(
     full_opacity_end = min(full_opacity_start + display_duration, video_duration)
     end_time = min(full_opacity_end + fade_out_duration, video_duration)
 
-    # Create filter string for logo overlay with fade effects
-    # Using proper FFmpeg expression syntax for alpha channel
+    # Use fade filter on logo input, not alpha on overlay
     filter_string = (
-        f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
-        f"[0:v][logo]overlay=x='(W-w)/2':y={y_pos}:"
-        f"enable='between(t,{start_time},{end_time})':"
-        f"alpha='if(lt(t,{full_opacity_start}),t/{fade_in_duration},"
-        f"if(gt(t,{full_opacity_end}),1-(t-{full_opacity_end})/{fade_out_duration},1))'[vout]"
+        f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1,"
+        f"fade=t=in:st=0:d={fade_in_duration}:alpha=1,"
+        f"fade=t=out:st={full_opacity_end}:d={fade_out_duration}:alpha=1[logo];"
+        f"{video_output}[logo]overlay=x='(W-w)/2':y={y_pos}:enable='between(t,0,{end_time})'[vout]"
     )
 
     print(f"Debug: Using logo filter: {filter_string}")
@@ -1243,7 +1243,7 @@ def fallback_create_output(
             motion_type=text_motion,
         )
         if text_filter:
-            vid_concat += f";[outv]{text_filter}[tmp1]"
+            filter_complex.append(f"[outv]{text_filter}[tmp1]")
             video_output = "[tmp1]"
         else:
             video_output = "[outv]"
@@ -1252,18 +1252,21 @@ def fallback_create_output(
 
     # Add logo overlay if provided
     if logo_path and os.path.exists(logo_path):
+        # Calculate timing
+        start_time = 0
+        full_opacity_start = start_time + logo_fade_in
+        full_opacity_end = min(full_opacity_start + logo_duration, video_duration)
+        end_time = min(full_opacity_end + logo_fade_out, video_duration)
+
         # Create logo filter with fade effects
-        logo_filter = create_logo_overlay_filter(
-            video_duration=video_duration,
-            logo_path=logo_path,
-            target_aspect=target_aspect,
-            fade_in_duration=logo_fade_in,
-            fade_out_duration=logo_fade_out,
-            display_duration=logo_duration,
+        logo_filter = (
+            f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1,"
+            f"fade=t=in:st=0:d={logo_fade_in}:alpha=1,"
+            f"fade=t=out:st={full_opacity_end}:d={logo_fade_out}:alpha=1[logo];"
+            f"{video_output}[logo]overlay=x='(W-w)/2':y='h*0.2':enable='between(t,0,{end_time})'[vout]"
         )
-        if logo_filter:
-            filter_complex.append(f"{video_output}{logo_filter}")
-            video_output = "[vout]"
+        filter_complex.append(logo_filter)
+        video_output = "[vout]"
     else:
         if video_output != "[outv]":
             filter_complex.append(f"{video_output}null[vout]")
@@ -1322,10 +1325,13 @@ def fallback_create_output(
     if result.returncode != 0:
         print("FFmpeg Error in fallback method:")
         print(result.stderr)
-        raise Exception("Both regular and fallback methods failed to create output video")
+        raise Exception(
+            "Both regular and fallback methods failed to create output video"
+        )
 
     if not os.path.exists(output_path):
         raise Exception("Fallback method didn't create output file")
+
 
 def has_audio_stream(video_path):
     """Check if a video file has an audio stream."""
@@ -1780,7 +1786,7 @@ def create_video_montage(
                 if text_filter or logo_filter:
                     filter_parts = []
                     input_label = "[0:v]"
-                    
+
                     # Apply text filter if present
                     if text_filter:
                         # Remove output label if present
@@ -1789,13 +1795,13 @@ def create_video_montage(
                             text_filter_clean = text_filter_clean[:-6]
                         filter_parts.append(f"{input_label}{text_filter_clean}[tmp1]")
                         input_label = "[tmp1]"
-                    
+
                     # Apply logo overlay if present
                     if logo_filter:
                         # logo_filter is a full filtergraph, so we need to split it
                         # It should be of the form: movie=...[logo];[X][logo]overlay=...[vout]
-                        logo_movie_part = logo_filter.split(';')[0]
-                        logo_overlay_part = logo_filter.split(';')[1]
+                        logo_movie_part = logo_filter.split(";")[0]
+                        logo_overlay_part = logo_filter.split(";")[1]
                         filter_parts.append(logo_movie_part)
                         # Replace [0:v] with the current input_label
                         overlay_part = logo_overlay_part.replace("[0:v]", input_label)
@@ -1803,7 +1809,7 @@ def create_video_montage(
                     else:
                         # If no logo, just output the last label as [vout]
                         filter_parts.append(f"{input_label}null[vout]")
-                    
+
                     filter_complex_str = ";".join(filter_parts)
                     cmd.extend(["-filter_complex", filter_complex_str])
                     cmd.extend(["-map", "[vout]"])
@@ -2121,7 +2127,9 @@ def main():
 
             # Add text style and duration to filename
             new_filename = f"{filename}_{args.text_style}_{args.duration}s{extension}"
-            output_path = os.path.join(directory, new_filename) if directory else new_filename
+            output_path = (
+                os.path.join(directory, new_filename) if directory else new_filename
+            )
 
         create_video_montage(
             all_videos,
