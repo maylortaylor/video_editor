@@ -1735,17 +1735,19 @@ def create_video_montage(
                 cmd = ["ffmpeg", "-y"]
                 cmd.extend(inputs)
 
-                # Combine text and logo filters
+                # Handle text and logo filters separately
                 if text_filter or logo_filter:
                     filter_parts = []
+                    current_input = "[0:v]"
+                    
+                    # Add text filter if present
                     if text_filter:
-                        filter_parts.append(f"[0:v]{text_filter}")
+                        filter_parts.append(f"{current_input}{text_filter}")
+                        current_input = "[vout]"
+                    
+                    # Add logo filter if present
                     if logo_filter:
-                        # If we already have text filter, use its output as input for logo
-                        if text_filter:
-                            filter_parts.append(f"[vout]{logo_filter}")
-                        else:
-                            filter_parts.append(f"[0:v]{logo_filter}")
+                        filter_parts.append(f"{current_input}{logo_filter}")
                     
                     # Join all filter parts with semicolons
                     filter_complex_str = ";".join(filter_parts)
