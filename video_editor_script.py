@@ -1219,8 +1219,8 @@ def fallback_create_output(
             motion_type=text_motion,
         )
         if text_filter:
-            vid_concat += f";[outv]{text_filter}[finalv]"
-            video_output = "[finalv]"
+            vid_concat += f";[outv]{text_filter}[tmp1]"
+            video_output = "[tmp1]"
         else:
             video_output = "[outv]"
     else:
@@ -1228,13 +1228,16 @@ def fallback_create_output(
 
     # Add logo overlay if provided
     if logo_path and os.path.exists(logo_path):
-        logo_filter = create_logo_overlay_filter(
-            video_duration=video_duration,
-            logo_path=logo_path,
-            target_aspect=target_aspect,
+        # Create logo filter
+        logo_filter = (
+            f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
+            f"{video_output}[logo]overlay=x='(W-w)/2':y='h*0.2'[vout]"
         )
-        if logo_filter:
-            vid_concat += f";{video_output}{logo_filter}[vout]"
+        filter_complex.append(logo_filter)
+        video_output = "[vout]"
+    else:
+        if video_output != "[outv]":
+            filter_complex.append(f"{video_output}null[vout]")
             video_output = "[vout]"
 
     # Combine all filter parts
