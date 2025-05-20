@@ -603,21 +603,21 @@ def calculate_dynamic_text_size(text, target_aspect, style="default"):
 
     # Style-specific base sizes
     if style == "pulse":
-        base_size = 120  # Larger base size for pulse style
-        min_size = 60
-        max_size = 180
+        base_size = 60
+        min_size = 40
+        max_size = 100
     elif style == "concert":
-        base_size = 140  # Largest base size for concert style
-        min_size = 80
-        max_size = 200
+        base_size = 80
+        min_size = 40
+        max_size = 100
     elif style == "promo":
-        base_size = 90  # Medium base size for promo style
-        min_size = 50
-        max_size = 150
+        base_size = 60
+        min_size = 40
+        max_size = 80
     else:  # default
-        base_size = 100  # Standard base size
-        min_size = 60
-        max_size = 160
+        base_size = 60
+        min_size = 40
+        max_size = 100
 
     # Calculate text length factor (inverse relationship)
     text_length = len(text)
