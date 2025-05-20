@@ -1205,6 +1205,32 @@ def fallback_create_output(
             "".join([f"[v{i}]" for i in range(len(segment_files))])
             + f"concat=n={len(segment_files)}:v=1:a=0[outv]"
         )
+    filter_complex.append(vid_concat)
+    video_output = "[outv]"
+
+    # Add text overlay if provided
+    if text:
+        text_filter = create_text_overlay_filter(
+            video_duration=video_duration,
+            text=text,
+            display_duration=text_display_duration,
+            style=text_style,
+            target_aspect=target_aspect,
+            motion_type=text_motion,
+        )
+        if text_filter:
+            filter_complex.append(f"{video_output}{text_filter}[tmp1]")
+            video_output = "[tmp1]"
+
+    # Add logo overlay if provided
+    if logo_path and os.path.exists(logo_path):
+        # Create logo filter WITHOUT fade effects for debugging
+        logo_filter = (
+            f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
+            f"{video_output}[logo]overlay=x='(W-w)/2':y='h*0.2'[vout]"
+        )
+        filter_complex.append(logo_filter)
+        video_output = "[vout]"
 
     # Handle audio mixing only if we have audio streams
     has_audio = any(has_audio_stream(f) for f in segment_files) or (
@@ -1229,53 +1255,8 @@ def fallback_create_output(
                 "".join([f"[a{i}]" for i in range(len(segment_files))])
                 + f"concat=n={len(segment_files)}:v=0:a=1[outa]"
             )
-    else:
-        audio_mix = None
-
-    # Add text overlay if provided
-    if text:
-        text_filter = create_text_overlay_filter(
-            video_duration=video_duration,
-            text=text,
-            display_duration=text_display_duration,
-            style=text_style,
-            target_aspect=target_aspect,
-            motion_type=text_motion,
-        )
-        if text_filter:
-            filter_complex.append(f"[outv]{text_filter}[tmp1]")
-            video_output = "[tmp1]"
-        else:
-            video_output = "[outv]"
-    else:
-        video_output = "[outv]"
-
-    # Add logo overlay if provided
-    if logo_path and os.path.exists(logo_path):
-        # Calculate timing
-        start_time = 0
-        full_opacity_start = start_time + logo_fade_in
-        full_opacity_end = min(full_opacity_start + logo_duration, video_duration)
-        end_time = min(full_opacity_end + logo_fade_out, video_duration)
-
-        # Create logo filter with fade effects
-        logo_filter = (
-            f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1,"
-            f"fade=t=in:st=0:d={logo_fade_in}:alpha=1,"
-            f"fade=t=out:st={full_opacity_end}:d={logo_fade_out}:alpha=1[logo];"
-            f"{video_output}[logo]overlay=x='(W-w)/2':y='h*0.2':enable='between(t,0,{end_time})'[vout]"
-        )
-        filter_complex.append(logo_filter)
-        video_output = "[vout]"
-    else:
-        if video_output != "[outv]":
-            filter_complex.append(f"{video_output}null[vout]")
-            video_output = "[vout]"
-
-    # Combine all filter parts
-    filter_complex.extend([vid_concat])
-    if audio_mix:
         filter_complex.append(audio_mix)
+
     filter_complex_str = ";".join(filter_complex)
 
     # Build the final FFmpeg command
