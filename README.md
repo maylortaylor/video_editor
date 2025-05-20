@@ -141,8 +141,6 @@ python3 video_editor_script.py \
      --text-style pro \
      --text="@Suite.E.Studios" \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
-
-python 3 video_editor_script.py -o logo_highlight.mp4 -f vertical_portrait -d 30 --logo "/Users/matttaylor/Documents/Maylor/SuiteE_vector_WHITE.png" "/Users/matttaylor/Documents/Maylor/test.MP4" --segments few
 ```
 
 ## Logo Overlay Features
