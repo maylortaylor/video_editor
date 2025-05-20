@@ -1130,6 +1130,7 @@ def fallback_create_output(
     intro_audio=None,
     intro_audio_duration=5.0,
     intro_audio_volume=2.0,
+    logo_path=None,
 ):
     """Fallback method: Create output video by directly encoding all segments into one file."""
     print("Using fallback method to create video...")
@@ -1224,6 +1225,17 @@ def fallback_create_output(
             video_output = "[outv]"
     else:
         video_output = "[outv]"
+
+    # Add logo overlay if provided
+    if logo_path and os.path.exists(logo_path):
+        logo_filter = create_logo_overlay_filter(
+            video_duration=video_duration,
+            logo_path=logo_path,
+            target_aspect=target_aspect,
+        )
+        if logo_filter:
+            vid_concat += f";{video_output}{logo_filter}[vout]"
+            video_output = "[vout]"
 
     # Combine all filter parts
     filter_complex.extend([vid_concat])
@@ -1838,6 +1850,7 @@ def create_video_montage(
                     intro_audio=intro_audio,
                     intro_audio_duration=intro_audio_duration,
                     intro_audio_volume=intro_audio_volume,
+                    logo_path=logo_path,
                 )
 
         except Exception as e:
@@ -1856,6 +1869,7 @@ def create_video_montage(
                 intro_audio=intro_audio,
                 intro_audio_duration=intro_audio_duration,
                 intro_audio_volume=intro_audio_volume,
+                logo_path=logo_path,
             )
     finally:
         # Clean up temporary files
