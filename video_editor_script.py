@@ -834,7 +834,7 @@ def create_logo_overlay_filter(
     # Use format=rgba to preserve transparency
     # Add enable condition to ensure logo is only shown during video duration
     filter_string = (
-        f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
+        f"movie={logo_path},format=auto,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
         f"[0:v][logo]overlay=x='(W-w)/2':y={y_pos}:"
         f"enable='between(t,0,{video_duration})':"
         f"alpha='if(lt(t,{fade_duration}),(t/{fade_duration}),"
