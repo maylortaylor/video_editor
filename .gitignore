@@ -1,3 +1,5 @@
+.mp4
+
 # Python
 __pycache__/
 *.py[cod]
@@ -78,7 +80,6 @@ site/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-
 # Distribution / packaging
 .Python
 env/
