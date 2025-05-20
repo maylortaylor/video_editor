@@ -1147,17 +1147,21 @@ def fallback_create_output(
     if intro_video and os.path.exists(intro_video):
         inputs.extend(["-i", intro_video])
         filter_complex.append(f"[0:v]scale={target_width}:{target_height}[intro_v]")
-        filter_complex.append(
-            f"[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[intro_a]"
-        )
+        # Only add audio filter if the video has audio
+        if has_audio_stream(intro_video):
+            filter_complex.append(
+                f"[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[intro_a]"
+            )
 
     # Add main segments
     for i, segment_file in enumerate(segment_files):
         inputs.extend(["-i", segment_file])
         filter_complex.append(f"[{i}:v]scale={target_width}:{target_height}[v{i}]")
-        filter_complex.append(
-            f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{i}]"
-        )
+        # Only add audio filter if the segment has audio
+        if has_audio_stream(segment_file):
+            filter_complex.append(
+                f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{i}]"
+            )
 
     # Concatenate video streams
     if intro_video and os.path.exists(intro_video):
@@ -1178,29 +1182,31 @@ def fallback_create_output(
             + f"concat=n={len(segment_files)}:v=1:a=0[outv]"
         )
 
-    # Handle audio mixing
-    if (
-        intro_video
-        and os.path.exists(intro_video)
-        and intro_audio
-        and os.path.exists(intro_audio)
-    ):
-        # Mix intro audio with main audio
-        audio_mix = (
-            "".join(
-                [
-                    f"[intro_a]" if i == 0 else f"[a{i-1}]"
-                    for i in range(len(segment_files) + 1)
-                ]
+    # Handle audio mixing only if we have audio streams
+    has_audio = any(has_audio_stream(f) for f in segment_files) or (
+        intro_video and os.path.exists(intro_video) and has_audio_stream(intro_video)
+    )
+
+    if has_audio:
+        if intro_video and os.path.exists(intro_video) and has_audio_stream(intro_video):
+            # Mix intro audio with main audio
+            audio_mix = (
+                "".join(
+                    [
+                        f"[intro_a]" if i == 0 else f"[a{i-1}]"
+                        for i in range(len(segment_files) + 1)
+                    ]
+                )
+                + f"concat=n={len(segment_files) + 1}:v=0:a=1[outa]"
             )
-            + f"concat=n={len(segment_files) + 1}:v=0:a=1[outa]"
-        )
+        else:
+            # Concatenate only main audio
+            audio_mix = (
+                "".join([f"[a{i}]" for i in range(len(segment_files))])
+                + f"concat=n={len(segment_files)}:v=0:a=1[outa]"
+            )
     else:
-        # Concatenate only main audio
-        audio_mix = (
-            "".join([f"[a{i}]" for i in range(len(segment_files))])
-            + f"concat=n={len(segment_files)}:v=0:a=1[outa]"
-        )
+        audio_mix = None
 
     # Add text overlay if provided
     if text:
@@ -1221,7 +1227,9 @@ def fallback_create_output(
         video_output = "[outv]"
 
     # Combine all filter parts
-    filter_complex.extend([vid_concat, audio_mix])
+    filter_complex.extend([vid_concat])
+    if audio_mix:
+        filter_complex.append(audio_mix)
     filter_complex_str = ";".join(filter_complex)
 
     # Build the full command
@@ -1233,58 +1241,37 @@ def fallback_create_output(
             filter_complex_str,
             "-map",
             video_output,
-            "-map",
-            "[outa]",
+        ]
+    )
+
+    # Add audio mapping if we have audio
+    if has_audio:
+        cmd.extend(["-map", "[outa]"])
+
+    # Add codec settings
+    cmd.extend(
+        [
             "-c:v",
             "libx264",
             "-preset",
             "medium",
             "-crf",
             "23",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-t",
-            str(video_duration),
-            output_path,
         ]
     )
+
+    # Add audio codec if we have audio
+    if has_audio:
+        cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+
+    # Add duration and output
+    cmd.extend(["-t", str(video_duration), output_path])
 
     print("Executing fallback FFmpeg command...")
     print("Command:", " ".join(cmd))
     print("Filter complex:", filter_complex_str)
 
-    # First, test if the filter complex is valid
-    test_cmd = [
-        "ffmpeg",
-        "-y",
-        "-f",
-        "lavfi",
-        "-i",
-        "testsrc=duration=1:size=1920x1080:rate=30",
-        "-filter_complex",
-        filter_complex_str,
-        "-f",
-        "null",
-        "-",
-    ]
-    try:
-        test_result = subprocess.run(
-            test_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-        )
-        if test_result.returncode != 0:
-            print("Filter complex test failed:")
-            print(test_result.stderr)
-            raise Exception("Invalid filter complex string")
-    except Exception as e:
-        print(f"Error testing filter complex: {e}")
-        raise
-
-    # Execute the actual command
+    # Execute the command
     result = subprocess.run(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
     )
@@ -1292,12 +1279,31 @@ def fallback_create_output(
     if result.returncode != 0:
         print("FFmpeg Error in fallback method:")
         print(result.stderr)
-        raise Exception(
-            "Both regular and fallback methods failed to create output video"
-        )
+        raise Exception("Both regular and fallback methods failed to create output video")
 
     if not os.path.exists(output_path):
         raise Exception("Fallback method didn't create output file")
+
+def has_audio_stream(video_path):
+    """Check if a video file has an audio stream."""
+    try:
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "a",
+            "-show_streams",
+            "-of",
+            "json",
+            video_path,
+        ]
+        result = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
+        )
+        return "streams" in result.stdout and len(result.stdout) > 20
+    except:
+        return False
 
 
 def parse_input_string(input_string):
