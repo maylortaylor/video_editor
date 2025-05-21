@@ -13,6 +13,7 @@ A Python script that creates exciting video montages optimized for social media 
 - Multiple text overlay styles with dynamic sizing
 - **Robust logo overlay feature that works with or without text overlays**
 - **Debug output for logo filter construction**
+- **Customizable thumbnail support with flexible scaling options**
 
 ## Recent Changes
 
@@ -21,6 +22,7 @@ A Python script that creates exciting video montages optimized for social media 
 - **No fade in/out for logo by default (can be added if needed).**
 - **Filter graph construction is now compatible with FFmpeg's requirements.**
 - **Script prints debug output for the logo filter.**
+- **Added thumbnail support with customizable duration and scaling options.**
 
 ## Examples
 
@@ -143,6 +145,34 @@ python3 video_editor_script.py \
      "/Users/matttaylor/Documents/Maylor/test.MP4"
 ```
 
+10. Thumbnail with Custom Duration (30s):
+```bash
+python3 video_editor_script.py \
+     -o thumbnail_montage.mp4 \
+     -f vertical_portrait \
+     -d 30 \
+     --thumbnail "/Users/matttaylor/Documents/Maylor/matt.png" \
+     --thumbnail-duration 1.0 \
+     --thumbnail-scale fill \
+     --text-style pro \
+     --text="@Suite.E.Studios" \
+     "/Users/matttaylor/Documents/Maylor/test.MP4"
+```
+
+11. Thumbnail with Custom Duration (30s):
+```bash
+python3 video_editor_script.py \
+     -o thumbnail_montage.mp4 \
+     -f vertical_portrait \
+     -d 30 \
+     --thumbnail "/Users/matttaylor/Documents/Maylor/matt.png" \
+     --thumbnail-duration 3.0 \
+     --thumbnail-scale fit \
+     --text-style pro \
+     --text="@Suite.E.Studios" \
+     "/Users/matttaylor/Documents/Maylor/test.MP4"
+```
+
 ## Logo Overlay Features
 
 - Supports transparent PNG images
@@ -233,6 +263,9 @@ python3 video_editor_script.py -o output.mp4 -f vertical_portrait "/Users/mattta
 | `--text` | Text overlay to display (single text string) |
 | `--text-style` | Text style: `default`, `pulse`, `pro`, `promo`, or `impact` |
 | `--logo` | Path to a transparent PNG logo to overlay on the video |
+| `--thumbnail` | Path to a thumbnail image to display at the start of the video |
+| `--thumbnail-duration` | Duration of the thumbnail in seconds (default: 1.0) |
+| `--thumbnail-scale` | How to scale the thumbnail: 'fit' (with padding) or 'fill' (with cropping) |
 | `--intro-video` | Video to play at the start |
 | `--intro-video-length` | Maximum length of intro video in seconds (5-30 seconds, default: 20) |
 | `--intro-audio` | Audio file to play at the start |
@@ -350,3 +383,59 @@ When adding new features, please add corresponding tests to ensure:
 2. Edge cases are handled properly
 3. Error conditions are caught
 4. Performance is maintained
+
+## Thumbnail Features
+
+The script now supports adding a thumbnail image at the start of your video with the following options:
+
+### Scaling Modes
+
+1. **Fit Mode** (default)
+   - Scales the image to fit within the target dimensions
+   - Maintains aspect ratio
+   - Adds padding if needed
+   - No cropping
+   - Best for: Images you want to see in full
+
+2. **Fill Mode**
+   - Scales the image to fill the target dimensions
+   - Maintains aspect ratio
+   - Crops if needed
+   - No padding
+   - Best for: Images where you want to fill the frame completely
+
+### Best Practices for Thumbnails
+
+1. **Image Quality**
+   - Use high-resolution images (at least 1080p)
+   - For vertical videos (9:16), use images with a similar aspect ratio
+   - For square videos (1:1), square images work best
+   - Supported formats: JPG, PNG, WebP
+   - PNG recommended for images with transparency
+   - Use JPG for photographs
+   - Keep file sizes reasonable (under 5MB recommended)
+
+2. **Scaling Mode Selection**
+   - Use `fit` mode when:
+     - The image is important to see in full
+     - The image has a different aspect ratio than the output
+     - You want to avoid any cropping
+   - Use `fill` mode when:
+     - The image needs to fill the entire frame
+     - The image has important content in the center
+     - You want a more immersive look
+
+3. **Duration**
+   - Default duration is 1 second
+   - Consider your audience's attention span
+   - Longer durations (2-3 seconds) work well for:
+     - Complex images that need time to be understood
+     - Text-heavy thumbnails
+     - Brand logos or important visual elements
+
+4. **File Paths**
+   - Use absolute paths for best reliability
+   - For macOS/Linux: `/Users/username/path/to/image.png`
+   - For Windows: `C:\Users\username\path\to\image.png`
+   - Avoid spaces in file paths (use underscores instead)
+   - Make sure the path is accessible to the script

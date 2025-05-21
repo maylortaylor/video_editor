@@ -10,6 +10,7 @@ import math
 from pathlib import Path
 from datetime import datetime
 from enum import Enum
+import json
 
 # Social media aspect ratios
 ASPECT_RATIOS = {
@@ -848,12 +849,12 @@ def create_logo_overlay_filter(
     full_opacity_end = min(full_opacity_start + display_duration, video_duration)
     end_time = min(full_opacity_end + fade_out_duration, video_duration)
 
-    # Use fade filter on logo input, not alpha on overlay
+    # Create the filter string with proper input/output labels
     filter_string = (
         f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1,"
         f"fade=t=in:st=0:d={fade_in_duration}:alpha=1,"
         f"fade=t=out:st={full_opacity_end}:d={fade_out_duration}:alpha=1[logo];"
-        f"{video_output}[logo]overlay=x='(W-w)/2':y={y_pos}:enable='between(t,0,{end_time})'[vout]"
+        f"[0:v][logo]overlay=x='(W-w)/2':y={y_pos}:enable='between(t,0,{end_time})'[vout]"
     )
 
     print(f"Debug: Using logo filter: {filter_string}")
@@ -1107,10 +1108,13 @@ def create_concat_file(segment_files, temp_dir):
             "experimental",  # Allow experimental codecs
             "-map",
             "0:v",  # Map video stream
-            "-map",
-            "0:a",  # Map audio stream
-            temp_output,
         ]
+
+        # Only add audio mapping if at least one file has audio
+        if any(has_audio_stream(f) for f in segment_files):
+            cmd.extend(["-map", "0:a"])  # Map audio stream
+
+        cmd.append(temp_output)
         print(f"Creating intermediate file: {temp_output}")
         result = subprocess.run(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
@@ -1166,45 +1170,26 @@ def fallback_create_output(
     # Generate a complex filtergraph to chain all segments together
     filter_complex = []
     inputs = []
+    video_streams = []
+    audio_streams = []
 
-    # Add intro video if provided
-    if intro_video and os.path.exists(intro_video):
-        inputs.extend(["-i", intro_video])
-        filter_complex.append(f"[0:v]scale={target_width}:{target_height}[intro_v]")
-        # Only add audio filter if the video has audio
-        if has_audio_stream(intro_video):
-            filter_complex.append(
-                f"[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[intro_a]"
-            )
-
-    # Add main segments
+    # Process each input file
     for i, segment_file in enumerate(segment_files):
         inputs.extend(["-i", segment_file])
-        filter_complex.append(f"[{i}:v]scale={target_width}:{target_height}[v{i}]")
-        # Only add audio filter if the segment has audio
+        
+        # Add video scaling, normalize SAR, and ensure consistent frame rate
+        filter_complex.append(f"[{i}:v]scale={target_width}:{target_height},setsar=1:1,fps=30[v{i}]")
+        video_streams.append(f"[v{i}]")
+        
+        # Only add audio processing if the file has audio
         if has_audio_stream(segment_file):
             filter_complex.append(
                 f"[{i}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a{i}]"
             )
+            audio_streams.append(f"[a{i}]")
 
     # Concatenate video streams
-    if intro_video and os.path.exists(intro_video):
-        # Concatenate intro with main segments
-        vid_concat = (
-            "".join(
-                [
-                    f"[intro_v]" if i == 0 else f"[v{i-1}]"
-                    for i in range(len(segment_files) + 1)
-                ]
-            )
-            + f"concat=n={len(segment_files) + 1}:v=1:a=0[outv]"
-        )
-    else:
-        # Concatenate only main segments
-        vid_concat = (
-            "".join([f"[v{i}]" for i in range(len(segment_files))])
-            + f"concat=n={len(segment_files)}:v=1:a=0[outv]"
-        )
+    vid_concat = "".join(video_streams) + f"concat=n={len(video_streams)}:v=1:a=0[outv]"
     filter_complex.append(vid_concat)
     video_output = "[outv]"
 
@@ -1219,12 +1204,13 @@ def fallback_create_output(
             motion_type=text_motion,
         )
         if text_filter:
+            # Remove any existing output label from the text filter
+            text_filter = text_filter.replace("[vout]", "")
             filter_complex.append(f"{video_output}{text_filter}[tmp1]")
             video_output = "[tmp1]"
 
     # Add logo overlay if provided
     if logo_path and os.path.exists(logo_path):
-        # Create logo filter WITHOUT fade effects for debugging
         logo_filter = (
             f"movie={logo_path},format=rgba,scale=w='min(iw,{target_width*0.3})':h=-1[logo];"
             f"{video_output}[logo]overlay=x='(W-w)/2':y='h*0.2'[vout]"
@@ -1233,66 +1219,47 @@ def fallback_create_output(
         video_output = "[vout]"
 
     # Handle audio mixing only if we have audio streams
-    has_audio = any(has_audio_stream(f) for f in segment_files) or (
-        intro_video and os.path.exists(intro_video) and has_audio_stream(intro_video)
-    )
-
-    if has_audio:
-        if intro_video and os.path.exists(intro_video) and has_audio_stream(intro_video):
-            # Mix intro audio with main audio
-            audio_mix = (
-                "".join(
-                    [
-                        f"[intro_a]" if i == 0 else f"[a{i-1}]"
-                        for i in range(len(segment_files) + 1)
-                    ]
-                )
-                + f"concat=n={len(segment_files) + 1}:v=0:a=1[outa]"
-            )
-        else:
-            # Concatenate only main audio
-            audio_mix = (
-                "".join([f"[a{i}]" for i in range(len(segment_files))])
-                + f"concat=n={len(segment_files)}:v=0:a=1[outa]"
-            )
+    if audio_streams:
+        audio_mix = "".join(audio_streams) + f"concat=n={len(audio_streams)}:v=0:a=1[outa]"
         filter_complex.append(audio_mix)
+        audio_output = "[outa]"
+    else:
+        audio_output = None
 
     filter_complex_str = ";".join(filter_complex)
+    print("Debug: Filter complex string:", filter_complex_str)  # Add debug output
 
     # Build the final FFmpeg command
     cmd = ["ffmpeg", "-y"]
     cmd.extend(inputs)
-    cmd.extend(
-        [
-            "-filter_complex",
-            filter_complex_str,
-            "-map",
-            video_output,
-        ]
-    )
+    cmd.extend(["-filter_complex", filter_complex_str])
+    cmd.extend(["-map", video_output])
 
-    # Add audio mapping if we have audio
-    if has_audio:
-        cmd.extend(["-map", "[outa]"])
+    # Only add audio mapping if we have audio
+    if audio_output:
+        cmd.extend(["-map", audio_output])
+        cmd.extend(["-c:a", "aac", "-b:a", "128k"])  # Standard audio bitrate for social media
 
-    # Add codec settings
-    cmd.extend(
-        [
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "23",
-        ]
-    )
-
-    # Add audio codec if we have audio
-    if has_audio:
-        cmd.extend(["-c:a", "aac", "-b:a", "192k"])
-
-    # Add duration and output
-    cmd.extend(["-t", str(video_duration), output_path])
+    # Add video codec settings optimized for social media
+    cmd.extend([
+        "-c:v", "libx264",  # H.264 codec
+        "-preset", "medium",  # Balance between speed and quality
+        "-crf", "23",  # Constant Rate Factor (18-28 is good, lower = better quality)
+        "-g", "30",  # Keyframe interval (1 second at 30fps)
+        "-keyint_min", "30",  # Minimum keyframe interval
+        "-sc_threshold", "0",  # Disable scene change detection
+        "-profile:v", "high",  # High profile for better quality
+        "-level", "4.0",  # Compatibility level
+        "-pix_fmt", "yuv420p",  # Standard pixel format
+        "-movflags", "+faststart",  # Enable fast start
+        "-tag:v", "avc1",  # Force H.264 tag
+        "-brand", "mp42",  # Set brand for compatibility
+        "-maxrate", "2M",  # Maximum bitrate
+        "-bufsize", "2M",  # Buffer size
+        "-r", "30",  # Frame rate
+        "-t", str(video_duration),
+        output_path
+    ])
 
     print("Executing fallback FFmpeg command...")
     print("Command:", " ".join(cmd))
@@ -1306,9 +1273,7 @@ def fallback_create_output(
     if result.returncode != 0:
         print("FFmpeg Error in fallback method:")
         print(result.stderr)
-        raise Exception(
-            "Both regular and fallback methods failed to create output video"
-        )
+        raise Exception("Both regular and fallback methods failed to create output video")
 
     if not os.path.exists(output_path):
         raise Exception("Fallback method didn't create output file")
@@ -1331,8 +1296,16 @@ def has_audio_stream(video_path):
         result = subprocess.run(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
         )
-        return "streams" in result.stdout and len(result.stdout) > 20
-    except:
+        if result.returncode != 0:
+            return False
+            
+        # Parse the JSON output
+        data = json.loads(result.stdout)
+        
+        # Check if there are any audio streams
+        return "streams" in data and len(data["streams"]) > 0
+    except Exception as e:
+        print(f"Warning: Error checking audio stream: {e}")
         return False
 
 
@@ -1550,6 +1523,9 @@ def create_video_montage(
     logo_fade_in=2.0,
     logo_fade_out=2.0,
     logo_duration=10.0,
+    thumbnail_path=None,
+    thumbnail_duration=1.0,
+    thumbnail_scale="fit",
 ):
     """Create a montage video with hardware acceleration if available."""
 
@@ -1558,6 +1534,19 @@ def create_video_montage(
     try:
         print(f"\nUsing temporary directory: {temp_dir}")
         segment_files = []
+
+        # Process thumbnail if provided
+        if thumbnail_path and os.path.exists(thumbnail_path):
+            thumbnail_segment = process_thumbnail(
+                thumbnail_path,
+                target_aspect,
+                temp_dir,
+                duration=thumbnail_duration,
+                scale_mode=thumbnail_scale
+            )
+            if thumbnail_segment:
+                segment_files.append(thumbnail_segment)
+                print(f"Added thumbnail segment ({thumbnail_duration} seconds, {thumbnail_scale} mode)")
 
         # Process intro video if provided
         intro_segment = None
@@ -1803,26 +1792,23 @@ def create_video_montage(
                 else:
                     cmd.extend(["-map", "0:a"])
 
-                # Add video codec settings
-                cmd.extend(
-                    [
-                        "-c:v",
-                        "libx264",  # Use libx264 for video
-                        "-preset",
-                        "medium",  # Balance between speed and quality
-                        "-crf",
-                        "23",  # Constant Rate Factor for quality
-                        "-c:a",
-                        "aac",  # Use AAC for audio
-                        "-b:a",
-                        "192k",  # Set audio bitrate
-                        "-s",
-                        f"{target_width}x{target_height}",
-                        "-t",
-                        str(output_duration),  # Ensure correct duration
-                        output_path,
-                    ]
-                )
+                # Add video codec settings with QuickTime compatibility
+                cmd.extend([
+                    "-c:v", "libx264",
+                    "-preset", "medium",
+                    "-crf", "23",
+                    "-g", "30",  # Set keyframe interval to 1 second (30 frames)
+                    "-keyint_min", "30",  # Minimum keyframe interval
+                    "-sc_threshold", "0",  # Disable scene change detection
+                    "-profile:v", "high",  # Use high profile for better compatibility
+                    "-level", "4.0",  # Set compatibility level
+                    "-pix_fmt", "yuv420p",  # Use standard pixel format
+                    "-movflags", "+faststart",  # Enable fast start for QuickTime
+                    "-tag:v", "avc1",  # Force H.264 tag for QuickTime
+                    "-brand", "mp42",  # Set brand for better QuickTime compatibility
+                    "-t", str(video_duration),
+                    output_path
+                ])
 
                 print(f"\nExecuting final FFmpeg command to create: {output_path}")
                 print("Command:", " ".join(cmd))
@@ -1920,6 +1906,73 @@ def create_video_montage(
             print("Temporary files cleaned up successfully")
         except Exception as e:
             print(f"Error during cleanup: {e}")
+
+
+def process_thumbnail(thumbnail_path, target_aspect, temp_dir, duration=1.0, scale_mode="fit"):
+    """
+    Process the thumbnail image to fit the target aspect ratio.
+    
+    Args:
+        thumbnail_path: Path to the thumbnail image
+        target_aspect: Target aspect ratio
+        temp_dir: Temporary directory for output
+        duration: Duration of the thumbnail in seconds (default: 1.0)
+        scale_mode: How to scale the image ('fit' or 'fill')
+            - 'fit': Scale to fit within dimensions, maintaining aspect ratio (may have padding)
+            - 'fill': Scale to fill dimensions, maintaining aspect ratio (may crop)
+    """
+    if not thumbnail_path or not os.path.exists(thumbnail_path):
+        return None
+
+    # Get target dimensions
+    target_width = ASPECT_RATIOS[target_aspect]["width"]
+    target_height = ASPECT_RATIOS[target_aspect]["height"]
+
+    # Create output path for processed thumbnail
+    processed_thumbnail = os.path.join(temp_dir, "processed_thumbnail.mp4")
+
+    try:
+        # Determine scaling filter based on mode
+        if scale_mode == "fill":
+            # Scale to fill, then crop to target dimensions
+            scale_filter = (
+                f"scale={target_width}:{target_height}:force_original_aspect_ratio=1,"
+                f"crop={target_width}:{target_height}:(iw-{target_width})/2:(ih-{target_height})/2"
+            )
+        else:  # "fit" mode
+            # Scale to fit, then pad to target dimensions
+            scale_filter = (
+                f"scale={target_width}:{target_height}:force_original_aspect_ratio=1,"
+                f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2"
+            )
+
+        # Create a video from the thumbnail with no audio
+        cmd = [
+            "ffmpeg", "-y",
+            "-loop", "1",
+            "-i", thumbnail_path,
+            "-vf", scale_filter,
+            "-t", str(duration),
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "23",
+            "-an",  # No audio
+            processed_thumbnail
+        ]
+
+        result = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
+        )
+
+        if result.returncode != 0:
+            print(f"Warning: Failed to process thumbnail: {result.stderr}")
+            return None
+
+        return processed_thumbnail
+
+    except Exception as e:
+        print(f"Error processing thumbnail: {e}")
+        return None
 
 
 def main():
@@ -2045,6 +2098,22 @@ def main():
         help="Total duration to display the logo in seconds (default: 10.0)",
     )
     parser.add_argument("input_video", nargs="?", help="Input video file")
+    parser.add_argument(
+        "--thumbnail",
+        help="Path to a thumbnail image to display at the start of the video"
+    )
+    parser.add_argument(
+        "--thumbnail-duration",
+        type=float,
+        default=1.0,
+        help="Duration of the thumbnail in seconds (default: 1.0)"
+    )
+    parser.add_argument(
+        "--thumbnail-scale",
+        choices=["fit", "fill"],
+        default="fit",
+        help="How to scale the thumbnail: 'fit' maintains aspect ratio with padding, 'fill' fills the frame and crops (default: fit)"
+    )
 
     args = parser.parse_args()
 
@@ -2136,6 +2205,9 @@ def main():
             logo_fade_in=args.logo_fade_in,
             logo_fade_out=args.logo_fade_out,
             logo_duration=args.logo_duration,
+            thumbnail_path=args.thumbnail,
+            thumbnail_duration=args.thumbnail_duration,
+            thumbnail_scale=args.thumbnail_scale,
         )
         abs_output_path = os.path.abspath(output_path)
 
